@@ -36,6 +36,14 @@ int ConnectionManager::init(const std::string ip, const std::string port,
   return 0;
 }
 
+int ConnectionManager::allocate_remote_page(uint64_t &addr) {
+  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->rdma_allocate_remote_page(addr);
+  m_rpc_conn_queue_->enqueue(conn);
+  return ret;
+}
+
 int ConnectionManager::register_remote_memory(uint64_t &addr, uint32_t &rkey,
                                               uint64_t size) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();

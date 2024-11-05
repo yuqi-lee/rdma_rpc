@@ -89,6 +89,11 @@ bool LocalEngine::write(const std::string key, const std::string value) {
   return true;
 }
 
+int LocalEngine::allocate_remote_page(uint64_t& addr) {
+  int ret = m_rdma_conn_->allocate_remote_page(addr);
+  return ret;
+}
+
 /**
  * @description: read value from engine via key
  * @param {string} key

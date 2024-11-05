@@ -1,4 +1,5 @@
 #include <string>
+#include <iostream>
 #include "kv_engine.h"
 #include "rdma_conn_manager.h"
 #include "rdma_mem_pool.h"
@@ -10,9 +11,11 @@ int main(int argc, char *argv[]) {
   kv::LocalEngine *kv_imp = new kv::LocalEngine();
   assert(kv_imp);
   kv_imp->start(rdma_addr, rdma_port);
+  uint64_t addr;
 
   do {
-    // task
+    kv_imp->allocate_remote_page(addr);
+    std::cout << "current addr is " << addr << std::endl;
   } while (kv_imp->alive());
 
   kv_imp->stop();

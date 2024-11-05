@@ -74,6 +74,7 @@ class LocalEngine : public Engine {
 
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
+  int allocate_remote_page(uint64_t& value);
 
  private:
   kv::ConnectionManager *m_rdma_conn_;
