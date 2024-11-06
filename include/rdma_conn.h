@@ -22,7 +22,7 @@ class RDMAConnection {
   int init(const std::string ip, const std::string port);
   int register_remote_memory(uint64_t& addr, uint32_t &rkey, uint64_t size);
   int rdma_allocate_remote_page(uint64_t& page_addr);
-
+  int rdma_free_remote_page(uint64_t page_addr);
   int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                   uint32_t rkey);
   int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,

@@ -252,9 +252,25 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = page_queue->allocate(addr);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
+  //auto ptr = malloc(4096);
+  //ibv_reg_mr(m_pd_, ptr, 4096,
+                 //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     //IBV_ACCESS_REMOTE_WRITE);
+  return ret;
+}
+
+int RemoteEngine::free_page(uint64_t addr) {
+  int ret;
+  //page_queue->mtx.lock();
+  ret = page_queue->allocate(addr);
+  //page_queue->mtx.unlock();
+  //auto ptr = malloc(4096);
+  //ibv_reg_mr(m_pd_, ptr, 4096,
+                 //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     //IBV_ACCESS_REMOTE_WRITE);
   return ret;
 }
 
@@ -349,14 +365,20 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     RequestsMsg *request = (RequestsMsg *)cmd_msg;
     if(request->type == MSG_ALLOCATEPAGE) {
       AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
-      AllocatePageResponse *resp_msg = (AllocatePageResponse *) cmd_resp;
+      AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
       if(allocate_page(resp_msg->addr)) {
         resp_msg->status = RES_FAIL;
       } else {
         resp_msg->status = RES_OK;
       }
 
-    } else if (request->type == MSG_REGISTER) {
+    } else if(request->type == MSG_FREEPAGE) {
+      FreePageRequest* free_page_req = (FreePageRequest*) request;
+      FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
+      free_page(free_page_req->addr);
+      resp_msg->status = RES_OK;
+    }
+    else if (request->type == MSG_REGISTER) {
       /* handle memory register requests */
       RegisterRequest *reg_req = (RegisterRequest *)request;
       // printf("receive a memory register message, size: %ld\n",

@@ -94,6 +94,11 @@ int LocalEngine::allocate_remote_page(uint64_t& addr) {
   return ret;
 }
 
+int LocalEngine::free_remote_page(uint64_t addr) {
+  int ret = m_rdma_conn_->free_remote_page(addr);
+  return ret;
+}
+
 /**
  * @description: read value from engine via key
  * @param {string} key

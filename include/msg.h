@@ -8,7 +8,7 @@ namespace kv {
 
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
-#define MAX_MSG_SIZE 32
+#define MAX_MSG_SIZE 128
 #define MAX_SERVER_WORKER 1
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
@@ -19,7 +19,7 @@ namespace kv {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -81,6 +81,17 @@ class AllocatePageResponse : public ResponseMsg {
   uint64_t addr;
 };
 CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
+
+class FreePageRequest : public RequestsMsg {
+ public:
+  uint64_t addr;
+};
+CHECK_RDMA_MSG_SIZE(FreePageRequest);
+
+class FreePageResponse : public ResponseMsg {
+ 
+};
+CHECK_RDMA_MSG_SIZE(FreePageResponse);
 
 struct UnregisterRequest : public RequestsMsg {
  public:

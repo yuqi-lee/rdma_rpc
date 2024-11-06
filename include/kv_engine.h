@@ -29,21 +29,31 @@ namespace kv {
 struct PageQueue {
   uint64_t begin;
   uint64_t end;
+  uint64_t capacity;
   uint64_t* pages_addr;
+  uint64_t count;
   std::mutex mtx;
 
-  PageQueue(uint64_t len) : begin(0) {
-    end = len - 1;
+  PageQueue(uint64_t len) : begin(0), end(0), count(len), capacity(len) {
     pages_addr = new uint64_t[len];
     for(uint64_t i = 0;i < len; ++i)
       pages_addr[i] = i;
   }
 
   int allocate(uint64_t& addr) {
-    if(begin == end)
+    if(count == 0)
       return -1;
     addr = pages_addr[begin];
-    begin++;
+    begin = (begin + 1) % capacity;
+    count--;
+  }
+
+  int free(uint64_t addr) {
+    if(count == capacity)
+      return -1;
+    pages_addr[end] = addr;
+    end = (end + 1) % capacity;
+    count++;
   }
 };
 
@@ -76,6 +86,7 @@ class LocalEngine : public Engine {
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
   int allocate_remote_page(uint64_t& value);
+  int free_remote_page(uint64_t value);
 
  private:
   kv::ConnectionManager *m_rdma_conn_;
@@ -118,6 +129,7 @@ class RemoteEngine : public Engine {
                                    uint64_t size);
 
   int allocate_page(uint64_t &addr);
+  int free_page(uint64_t addr);
 
   void worker(WorkerInfo *work_info, uint32_t num);
 
