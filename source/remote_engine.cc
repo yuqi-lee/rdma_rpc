@@ -11,8 +11,10 @@ namespace kv {
  * @param {string} port   the port the server listened
  * @return {bool} true for success
  */
-bool RemoteEngine::start(const std::string addr, const std::string port) {
+bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
+
+  const std::string device = "mlx5_0";
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
   m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
@@ -30,7 +32,14 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  m_context_ = ibv_ctxs[0];
+  for(int i = 0; i< nr_devices_; i++) {
+    if(device.compare(ibv_ctxs[i]->device->name) == 0){
+      m_context_ = ibv_ctxs[i];
+      break;
+    }
+  }
+
+  //m_context_ = ibv_ctxs[0];
   m_pd_ = ibv_alloc_pd(m_context_);
   if (!m_pd_) {
     perror("ibv_alloc_pd fail");
@@ -58,7 +67,7 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  if (rdma_listen(m_listen_id_, 1)) {
+  if (rdma_listen(m_listen_id_, 2048)) {
     perror("rdma_listen fail");
     return false;
   }
@@ -141,7 +150,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
     return -1;
   }
 
-  struct ibv_cq *cq = ibv_create_cq(m_context_, 2, NULL, comp_chan, 0);
+  struct ibv_cq *cq = ibv_create_cq(m_context_, 1, NULL, comp_chan, 0);
   if (!cq) {
     perror("ibv_create_cq fail");
     return -1;
@@ -157,12 +166,17 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   qp_attr.cap.max_send_sge = 1;
   qp_attr.cap.max_recv_wr = 1;
   qp_attr.cap.max_recv_sge = 1;
+  qp_attr.cap.max_inline_data = 256;
+  qp_attr.sq_sig_all = 0;
   qp_attr.send_cq = cq;
   qp_attr.recv_cq = cq;
   qp_attr.qp_type = IBV_QPT_RC;
 
   if (rdma_create_qp(cm_id, m_pd_, &qp_attr)) {
-    perror("rdma_create_qp fail");
+    perror("rdma_create_qp fail:RemoteEngine::create_connection");
+    //std::cout << "cm_id : " << cm_id << std::endl;
+    //std::cout << "m_pd_ : " << m_pd_ << std::endl;
+    //std::cout << "qp_attr : " << qp_attr << std::endl;
     return -1;
   }
 
@@ -208,8 +222,11 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   }
 
   struct rdma_conn_param conn_param;
-  conn_param.responder_resources = 1;
+  conn_param.responder_resources = 16;
+  conn_param.initiator_depth = 16;
   conn_param.private_data = &rep_pdata;
+  conn_param.retry_count = 7;
+  conn_param.rnr_retry_count = 7;
   conn_param.private_data_len = sizeof(rep_pdata);
 
   // printf("connection created, private data: %ld, addr: %ld, key: %d\n",
@@ -228,7 +245,7 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
   struct ibv_mr *mr =
       ibv_reg_mr(m_pd_, ptr, size,
                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE);
+                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
   if (!mr) {
     perror("ibv_reg_mr fail");
     return nullptr;

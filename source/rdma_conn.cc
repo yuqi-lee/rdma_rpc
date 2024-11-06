@@ -75,7 +75,7 @@ int RDMAConnection::init(const std::string ip, const std::string port) {
     return -1;
   }
 
-  m_cq_ = ibv_create_cq(m_cm_id_->verbs, 2, NULL, comp_chan, 0);
+  m_cq_ = ibv_create_cq(m_cm_id_->verbs, 1024, NULL, comp_chan, 0);
   if (!m_cq_) {
     perror("ibv_create_cq fail");
     return -1;
@@ -87,22 +87,28 @@ int RDMAConnection::init(const std::string ip, const std::string port) {
   }
 
   struct ibv_qp_init_attr qp_attr = {};
-  qp_attr.cap.max_send_wr = 2;
-  qp_attr.cap.max_send_sge = 1;
+  qp_attr.cap.max_send_wr = 512;
+  qp_attr.cap.max_send_sge = 16;
   qp_attr.cap.max_recv_wr = 1;
-  qp_attr.cap.max_recv_sge = 1;
+  qp_attr.cap.max_recv_sge = 16;
+  qp_attr.sq_sig_all = 0;
+  
 
   qp_attr.send_cq = m_cq_;
   qp_attr.recv_cq = m_cq_;
   qp_attr.qp_type = IBV_QPT_RC;
   if (rdma_create_qp(m_cm_id_, m_pd_, &qp_attr)) {
-    perror("rdma_create_qp fail");
+    perror("rdma_create_qp fail:RDMAConnection::init");
     return -1;
   }
 
   struct rdma_conn_param conn_param = {};
-  conn_param.initiator_depth = 1;
-  conn_param.retry_count = 7;
+    conn_param.responder_resources = 16;
+    //conn_param.private_data = &init_msg;
+    //conn_param.private_data_len = sizeof(CNodeInit);
+    conn_param.initiator_depth = 16;
+    conn_param.retry_count = 7;
+    conn_param.rnr_retry_count = 7;
   if (rdma_connect(m_cm_id_, &conn_param)) {
     perror("rdma_connect fail");
     return -1;

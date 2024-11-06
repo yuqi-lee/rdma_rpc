@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <mutex>
+#include <iostream>
 #include "kv_engine.h"
 #include "msg.h"
 #include "rdma_conn_manager.h"
