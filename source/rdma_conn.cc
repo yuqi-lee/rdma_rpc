@@ -113,7 +113,7 @@ int RDMAConnection::init(const std::string ip, const std::string port) {
     perror("rdma_connect fail");
     return -1;
   }
-x
+
   if (rdma_get_cm_event(m_cm_channel_, &event)) {
     perror("rdma_get_cm_event fail");
     return -1;
