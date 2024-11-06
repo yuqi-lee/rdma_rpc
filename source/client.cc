@@ -17,6 +17,8 @@ int main(int argc, char *argv[]) {
   uint64_t addr;
   uint64_t count = 0;
   auto start = std::chrono::high_resolution_clock::now();
+  auto end = std::chrono::high_resolution_clock::now();
+  /*
   do {
     count++;
     if(count % interval == 0) {
@@ -27,7 +29,16 @@ int main(int argc, char *argv[]) {
     }
     kv_imp->allocate_remote_page(addr);
     
-  } while (kv_imp->alive());
+  } while (kv_imp->alive());*/
+
+  do {
+    count++;
+    start = std::chrono::high_resolution_clock::now();
+    kv_imp->allocate_remote_page(addr);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    std::cout << "latency is " << duration.count() << std::endl;
+  } while (count < 100);
 
   kv_imp->stop();
   delete kv_imp;
