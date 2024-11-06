@@ -14,7 +14,7 @@ namespace kv {
 bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
 
-  const std::string device = "mlx5_0";
+  const std::string device = "mlx5_2";
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
   m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
@@ -174,9 +174,6 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
 
   if (rdma_create_qp(cm_id, m_pd_, &qp_attr)) {
     perror("rdma_create_qp fail:RemoteEngine::create_connection");
-    //std::cout << "cm_id : " << cm_id << std::endl;
-    //std::cout << "m_pd_ : " << m_pd_ << std::endl;
-    //std::cout << "qp_attr : " << qp_attr << std::endl;
     return -1;
   }
 
@@ -221,7 +218,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
         new std::thread(&RemoteEngine::worker, this, m_worker_info_[num], num);
   }
 
-  struct rdma_conn_param conn_param;
+  struct rdma_conn_param conn_param = {};
   conn_param.responder_resources = 16;
   conn_param.initiator_depth = 16;
   conn_param.private_data = &rep_pdata;
