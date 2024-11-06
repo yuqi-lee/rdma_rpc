@@ -375,8 +375,11 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     } else if(request->type == MSG_FREEPAGE) {
       FreePageRequest* free_page_req = (FreePageRequest*) request;
       FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
-      free_page(free_page_req->addr);
-      resp_msg->status = RES_OK;
+      if(free_page(free_page_req->addr)) {
+        resp_msg->status = RES_FAIL;
+      } else {
+        resp_msg->status = RES_OK;
+      }
     }
     else if (request->type == MSG_REGISTER) {
       /* handle memory register requests */

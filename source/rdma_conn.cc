@@ -341,7 +341,7 @@ int RDMAConnection::rdma_allocate_remote_page(uint64_t& page_addr) {
   }
   AllocatePageResponse *resp_msg = (AllocatePageResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("register remote memory fail\n");
+    printf("allocate remote page fail\n");
     return -1;
   }
   page_addr = resp_msg->addr;
@@ -382,7 +382,7 @@ int RDMAConnection::rdma_free_remote_page(uint64_t page_addr) {
   }
   FreePageResponse *resp_msg = (FreePageResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("register remote memory fail\n");
+    printf("free remote page fail\n");
     return -1;
   }
   //page_addr = resp_msg->addr;

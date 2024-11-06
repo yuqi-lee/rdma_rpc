@@ -40,12 +40,17 @@ struct PageQueue {
       pages_addr[i] = i;
   }
 
+  ~PageQueue() {
+    delete pages_addr;
+  }
+
   int allocate(uint64_t& addr) {
     if(count == 0)
       return -1;
     addr = pages_addr[begin];
     begin = (begin + 1) % capacity;
     count--;
+    return 0;
   }
 
   int free(uint64_t addr) {
@@ -54,6 +59,7 @@ struct PageQueue {
     pages_addr[end] = addr;
     end = (end + 1) % capacity;
     count++;
+    return 0;
   }
 };
 
