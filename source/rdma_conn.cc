@@ -359,7 +359,7 @@ int RDMAConnection::rdma_free_remote_page(uint64_t page_addr) {
   request->resp_addr = (uint64_t)m_cmd_resp_;
   request->resp_rkey = m_resp_mr_->rkey;
   request->type = MSG_FREEPAGE;
-  request->size = 1; // todo
+  //request->size = 1; // todo
   request->addr = page_addr;
   m_cmd_msg_->notify = NOTIFY_WORK;
 

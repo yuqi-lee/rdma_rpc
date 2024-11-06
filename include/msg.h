@@ -8,7 +8,7 @@ namespace kv {
 
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
-#define MAX_MSG_SIZE 128
+#define MAX_MSG_SIZE 32
 #define MAX_SERVER_WORKER 1
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
@@ -85,7 +85,6 @@ CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
 class FreePageRequest : public RequestsMsg {
  public:
   uint64_t addr;
-  uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(FreePageRequest);
 
