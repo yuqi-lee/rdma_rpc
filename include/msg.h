@@ -85,11 +85,12 @@ CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
 class FreePageRequest : public RequestsMsg {
  public:
   uint64_t addr;
+  uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(FreePageRequest);
 
 class FreePageResponse : public ResponseMsg {
- 
+ public:
 };
 CHECK_RDMA_MSG_SIZE(FreePageResponse);
 

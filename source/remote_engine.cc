@@ -252,9 +252,9 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
-  //page_queue->mtx.lock();
+  page_queue->mtx.lock();
   ret = page_queue->allocate(addr);
-  //page_queue->mtx.unlock();
+  page_queue->mtx.unlock();
   //auto ptr = malloc(4096);
   //ibv_reg_mr(m_pd_, ptr, 4096,
                  //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
@@ -264,9 +264,9 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
 
 int RemoteEngine::free_page(uint64_t addr) {
   int ret;
-  //page_queue->mtx.lock();
-  ret = page_queue->allocate(addr);
-  //page_queue->mtx.unlock();
+  page_queue->mtx.lock();
+  ret = page_queue->free(addr);
+  page_queue->mtx.unlock();
   //auto ptr = malloc(4096);
   //ibv_reg_mr(m_pd_, ptr, 4096,
                  //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
