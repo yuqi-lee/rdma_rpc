@@ -8,7 +8,9 @@ int main(int argc, char *argv[]) {
   
   kv::RemoteEngine *kv_imp = new kv::RemoteEngine();
   assert(kv_imp);
-  kv_imp->start(rdma_addr, rdma_port);
+  if(!kv_imp->start(rdma_addr, rdma_port)){
+    std::cout << "start error" << std::endl;
+  }
 
   do {
     // sleep

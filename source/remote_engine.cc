@@ -14,6 +14,14 @@ namespace kv {
 bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
 
+  this->page_queue = new PageQueue(TOTAL_PAGES);
+  if(this->page_queue == nullptr) {
+    perror("page queue init fail.");
+    return false;
+  } else {
+    std::cout << "page queue init success" << std::endl;
+  }
+
   const std::string device = "mlx5_2";
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
@@ -80,8 +88,6 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
       m_worker_threads_[i]->join();
     }
   }
-
-  page_queue = new PageQueue(TOTAL_PAGES);
 
   return true;
 }
@@ -253,24 +259,57 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
   page_queue->mtx.lock();
-  ret = page_queue->allocate(addr);
+  ret = this->page_queue->allocate(addr);
   page_queue->mtx.unlock();
-  //auto ptr = malloc(4096);
-  //ibv_reg_mr(m_pd_, ptr, 4096,
-                 //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     //IBV_ACCESS_REMOTE_WRITE);
   return ret;
+}
+
+int RemoteEngine::allocate_page_regmr(uint64_t &addr) {
+  auto ptr = malloc(4096);
+  auto mr = ibv_reg_mr(m_pd_, ptr, 4096,
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     IBV_ACCESS_REMOTE_WRITE);
+  if(!mr)
+    return -1;
+  addr = uint64_t(ptr);
+  mrmap_mtx.lock();
+  if(mrmap.find(addr) != mrmap.end())
+    return -1;
+  mrmap.insert({addr, mr});
+  mrmap_mtx.unlock();
+  
+  return 0;
+}
+
+int RemoteEngine::allocate_page_malloc(uint64_t &addr) {
+  auto ptr = malloc(4096);
+  if(!ptr)
+    return -1;
+  addr = uint64_t(ptr);
+  return 0;
+}
+
+int RemoteEngine::free_page_malloc(uint64_t addr) {
+  free((void*)addr);
+  return 0;
 }
 
 int RemoteEngine::free_page(uint64_t addr) {
   int ret;
   page_queue->mtx.lock();
-  ret = page_queue->free(addr);
+  ret = this->page_queue->free(addr);
   page_queue->mtx.unlock();
-  //auto ptr = malloc(4096);
-  //ibv_reg_mr(m_pd_, ptr, 4096,
-                 //IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     //IBV_ACCESS_REMOTE_WRITE);
+  return ret;
+}
+
+int RemoteEngine::free_page_deregmr(uint64_t addr) {
+  int ret;
+  mrmap_mtx.lock();
+  auto pair = mrmap.find(addr);
+  if(pair == mrmap.end())
+    return -1;
+  ret = ibv_dereg_mr(pair->second);
+  mrmap_mtx.unlock();
   return ret;
 }
 
@@ -366,22 +405,27 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     if(request->type == MSG_ALLOCATEPAGE) {
       AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
       AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
-      if(allocate_page(resp_msg->addr)) {
+      if(allocate_page_malloc(resp_msg->addr)) {
         resp_msg->status = RES_FAIL;
       } else {
         resp_msg->status = RES_OK;
       }
+      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                   sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
+                   alloc_page_req->resp_rkey);
 
     } else if(request->type == MSG_FREEPAGE) {
       FreePageRequest* free_page_req = (FreePageRequest*) request;
       FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
-      if(free_page(free_page_req->addr)) {
+      if(free_page_malloc(free_page_req->addr)) {
         resp_msg->status = RES_FAIL;
       } else {
         resp_msg->status = RES_OK;
       }
-    }
-    else if (request->type == MSG_REGISTER) {
+      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                   sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
+                   free_page_req->resp_rkey);
+    } else if (request->type == MSG_REGISTER) {
       /* handle memory register requests */
       RegisterRequest *reg_req = (RegisterRequest *)request;
       // printf("receive a memory register message, size: %ld\n",
