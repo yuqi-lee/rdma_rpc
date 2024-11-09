@@ -2,8 +2,28 @@
 
 #define MEM_ALIGN_SIZE 4096
 #define TOTAL_PAGES (128 << 10 << 10)
+#define CORE_ID 31
 
 namespace kv {
+
+void set_thread_affinity(std::thread* t, int core_id) {
+    // 获取线程的原始句柄
+    pthread_t native_handle = t->native_handle();
+
+    // 定义CPU亲和性集
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);           // 清空亲和性集
+    CPU_SET(core_id, &cpuset);   // 将指定核心添加到亲和性集
+
+    // 设置线程的亲和性
+    int result = pthread_setaffinity_np(native_handle, sizeof(cpu_set_t), &cpuset);
+    if (result != 0) {
+        std::cerr << "Error setting thread affinity: " << result << std::endl;
+    } else {
+        std::cout << "Success setting thread affinity." << std::endl;
+    }
+    
+}
 
 /**
  * @description: start remote engine service
@@ -80,14 +100,21 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     return false;
   }
 
-  m_conn_handler_ = new std::thread(&RemoteEngine::handle_connection, this);
+  main_worker_thread_ = new std::thread(&RemoteEngine::main_worker, this);
+  set_thread_affinity(main_worker_thread_, CORE_ID);
 
-  m_conn_handler_->join();
+  m_conn_handler_ = new std::thread(&RemoteEngine::handle_connection, this);
+  
+
+  //m_conn_handler_->join();
+  /*
   for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
     if (m_worker_threads_[i] != nullptr) {
       m_worker_threads_[i]->join();
     }
-  }
+  }*/
+  
+  //main_worker_thread_->join();
 
   return true;
 }
@@ -170,7 +197,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   struct ibv_qp_init_attr qp_attr = {};
   qp_attr.cap.max_send_wr = 4096;
   qp_attr.cap.max_send_sge = 1;
-  qp_attr.cap.max_recv_wr = 4096;
+  qp_attr.cap.max_recv_wr = 5120;
   qp_attr.cap.max_recv_sge = 1;
   qp_attr.cap.max_inline_data = 256;
   qp_attr.sq_sig_all = 0;
@@ -219,11 +246,13 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
     m_worker_info_[num]->cm_id = cm_id;
     m_worker_info_[num]->cq = cq;
     m_worker_info_[num]->comp_channel = comp_chan;
-
     assert(m_worker_threads_[num] == nullptr);
-    m_worker_threads_[num] =
-        new std::thread(&RemoteEngine::worker, this, m_worker_info_[num], num);
+    active_workers.insert(m_worker_info_[num]);
+    std::cout << "add a new worker: " << num << std::endl;
   }
+
+  //m_worker_threads_[0] =
+        //new std::thread(&RemoteEngine::worker, this, m_worker_info_[num], num);
 
   struct rdma_conn_param conn_param = {};
   conn_param.responder_resources = 16;
@@ -259,9 +288,9 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
-  //page_queue->mtx.lock();
+  page_queue->mtx.lock();
   ret = this->page_queue->allocate(addr);
-  //page_queue->mtx.unlock();
+  page_queue->mtx.unlock();
   return ret;
 }
 
@@ -297,9 +326,9 @@ int RemoteEngine::free_page_malloc(uint64_t addr) {
 
 int RemoteEngine::free_page(uint64_t addr) {
   int ret;
-  //page_queue->mtx.lock();
+  page_queue->mtx.lock();
   ret = this->page_queue->free(addr);
-  //page_queue->mtx.unlock();
+  page_queue->mtx.unlock();
   return ret;
 }
 
@@ -358,7 +387,7 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
   if(ret != 0) {
     int err = errno;
     std::cerr << "ibv_post_send fail, errno: " << ret << std::endl;
-    work_info->cq_mutex.unlock();
+    //work_info->cq_mutex.unlock();
     return ret;
   }
 
@@ -400,18 +429,23 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
   return ret;*/
 }
 
+void RemoteEngine::main_worker() {
+  printf("start main worker on core: %d\n", CORE_ID);
+  while(true) {
+    for(auto worker_info : active_workers) {
+      worker(worker_info, 1);
+    }
+  }
+}
+
 void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
-  printf("start worker %d\n", num);
+  
   CmdMsgBlock *cmd_msg = work_info->cmd_msg;
   CmdMsgRespBlock *cmd_resp = work_info->cmd_resp_msg;
   struct ibv_mr *resp_mr = work_info->resp_mr;
   cmd_resp->notify = NOTIFY_WORK;
-  RequestsMsg request;
+
   struct ibv_wc wc;
-
-  //auto t = new std::thread(&RemoteEngine::handle_cq_async, this, work_info->comp_channel, work_info->cq);
-
-  while (true) {
     //work_info->cq_mutex.lock();
     int rc = ibv_poll_cq(work_info->cq, 1, &wc);
     if (rc > 0) {
@@ -433,8 +467,8 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     }
     //work_info->cq_mutex.unlock();
 
-    if (m_stop_) break;
-    if (cmd_msg->notify == NOTIFY_IDLE) continue;
+    if (m_stop_) return;
+    if (cmd_msg->notify == NOTIFY_IDLE) return;
     cmd_msg->notify = NOTIFY_IDLE;
     RequestsMsg *request = (RequestsMsg *)cmd_msg;
     
@@ -452,7 +486,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                    alloc_page_req->resp_rkey);
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
-      if(duration.count() > 1)
+      if(duration.count() > 10)
         std::cout << "allocate latency is " << duration.count() << std::endl;
     } else if(request->type == MSG_FREEPAGE) {
       auto start = std::chrono::high_resolution_clock::now();
@@ -468,7 +502,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                    free_page_req->resp_rkey);
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
-      if(duration.count() > 1)
+      if(duration.count() > 10)
         std::cout << "free latency is " << duration.count() << std::endl;
     } else if (request->type == MSG_REGISTER) {
       /* handle memory register requests */
@@ -495,9 +529,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     } else {
       printf("wrong request type\n");
     }
-    
-    
-  }
+  
 }
 
 }  // namespace kv

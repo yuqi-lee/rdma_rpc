@@ -11,8 +11,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <mutex>
+#include <tbb/concurrent_set.h>
 #include <condition_variable>
 #include <iostream>
+#include <boost/asio.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
+#include <coroutine>
+#include <memory>
+
 #include "kv_engine.h"
 #include "msg.h"
 #include "rdma_conn_manager.h"
@@ -147,20 +154,29 @@ class RemoteEngine : public Engine {
   int free_page_malloc(uint64_t addr);
 
   void worker(WorkerInfo *work_info, uint32_t num);
+  void main_worker();
   void handle_cq_async(ibv_comp_channel *comp_channel, ibv_cq *cq);
+
+  void startWorker(int num);
+  //boost::asio::awaitable<void> worker(WorkerInfo worker_info, int num);
+  //void run();
 
   struct rdma_event_channel *m_cm_channel_;
   struct rdma_cm_id *m_listen_id_;
   struct ibv_pd *m_pd_;
   struct ibv_context *m_context_;
   struct PageQueue* page_queue = nullptr;
+  boost::asio::io_context io_context_;
+
   std::unordered_map<uint64_t, ibv_mr*> mrmap;
   std::mutex mrmap_mtx;
   bool m_stop_;
   std::thread *m_conn_handler_;
   WorkerInfo **m_worker_info_;
+  tbb::concurrent_set<WorkerInfo*> active_workers;
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
+  std::thread *main_worker_thread_;
   //std::thread *async_cq_thread;
   std::condition_variable cv;
   std::mutex mtx;

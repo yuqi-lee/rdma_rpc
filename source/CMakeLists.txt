@@ -12,6 +12,7 @@ target_link_libraries(server
     ibverbs
     rdmacm
     rt
+    tbb
 )
 
 target_link_libraries(client
