@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <mutex>
+#include <condition_variable>
 #include <iostream>
 #include "kv_engine.h"
 #include "msg.h"
@@ -113,6 +114,8 @@ class RemoteEngine : public Engine {
     struct ibv_mr *resp_mr;
     rdma_cm_id *cm_id;
     struct ibv_cq *cq;
+    struct ibv_comp_channel *comp_channel;
+    std::mutex cq_mutex;
   };
 
   ~RemoteEngine(){};
@@ -144,6 +147,7 @@ class RemoteEngine : public Engine {
   int free_page_malloc(uint64_t addr);
 
   void worker(WorkerInfo *work_info, uint32_t num);
+  void handle_cq_async(ibv_comp_channel *comp_channel, ibv_cq *cq);
 
   struct rdma_event_channel *m_cm_channel_;
   struct rdma_cm_id *m_listen_id_;
@@ -157,6 +161,9 @@ class RemoteEngine : public Engine {
   WorkerInfo **m_worker_info_;
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
+  //std::thread *async_cq_thread;
+  std::condition_variable cv;
+  std::mutex mtx;
 };
 
 }  // namespace kv

@@ -168,9 +168,9 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   }
 
   struct ibv_qp_init_attr qp_attr = {};
-  qp_attr.cap.max_send_wr = 1;
+  qp_attr.cap.max_send_wr = 4096;
   qp_attr.cap.max_send_sge = 1;
-  qp_attr.cap.max_recv_wr = 1;
+  qp_attr.cap.max_recv_wr = 4096;
   qp_attr.cap.max_recv_sge = 1;
   qp_attr.cap.max_inline_data = 256;
   qp_attr.sq_sig_all = 0;
@@ -218,6 +218,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
     m_worker_info_[num]->resp_mr = resp_mr;
     m_worker_info_[num]->cm_id = cm_id;
     m_worker_info_[num]->cq = cq;
+    m_worker_info_[num]->comp_channel = comp_chan;
 
     assert(m_worker_threads_[num] == nullptr);
     m_worker_threads_[num] =
@@ -258,9 +259,9 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->allocate(addr);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -296,9 +297,9 @@ int RemoteEngine::free_page_malloc(uint64_t addr) {
 
 int RemoteEngine::free_page(uint64_t addr) {
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->free(addr);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -349,14 +350,23 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
   send_wr.sg_list = &sge;
   send_wr.send_flags = IBV_SEND_SIGNALED;
   send_wr.wr.rdma.remote_addr = remote_addr;
-  send_wr.wr.rdma.rkey = rkey;
-  if (ibv_post_send(work_info->cm_id->qp, &send_wr, &bad_send_wr)) {
-    perror("ibv_post_send fail");
-    return -1;
+  send_wr.wr.rdma.rkey = rkey; 
+  int ret = 0;
+  //work_info->cq_mutex.lock();
+  ret = ibv_post_send(work_info->cm_id->qp, &send_wr, &bad_send_wr);
+
+  if(ret != 0) {
+    int err = errno;
+    std::cerr << "ibv_post_send fail, errno: " << ret << std::endl;
+    work_info->cq_mutex.unlock();
+    return ret;
   }
 
-  // printf("remote write %ld %d\n", remote_addr, rkey);
+  //work_info->cq_mutex.unlock();
+  return ret;
 
+  // printf("remote write %ld %d\n", remote_addr, rkey);
+ /*
   auto start = TIME_NOW;
   struct ibv_wc wc;
   int ret = -1;
@@ -387,7 +397,7 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
       break;
     }
   }
-  return ret;
+  return ret;*/
 }
 
 void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
@@ -397,15 +407,42 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
   struct ibv_mr *resp_mr = work_info->resp_mr;
   cmd_resp->notify = NOTIFY_WORK;
   RequestsMsg request;
+  struct ibv_wc wc;
+
+  //auto t = new std::thread(&RemoteEngine::handle_cq_async, this, work_info->comp_channel, work_info->cq);
+
   while (true) {
+    //work_info->cq_mutex.lock();
+    int rc = ibv_poll_cq(work_info->cq, 1, &wc);
+    if (rc > 0) {
+      if (IBV_WC_SUCCESS == wc.status) {
+        
+      } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+        perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+        
+      } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+        perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+        
+      } else {
+        perror("cmd_send ibv_poll_cq status error");
+        
+      }
+    } else if (0 == rc) {
+    } else {
+      perror("ibv_poll_cq fail");
+    }
+    //work_info->cq_mutex.unlock();
+
     if (m_stop_) break;
     if (cmd_msg->notify == NOTIFY_IDLE) continue;
     cmd_msg->notify = NOTIFY_IDLE;
     RequestsMsg *request = (RequestsMsg *)cmd_msg;
+    
     if(request->type == MSG_ALLOCATEPAGE) {
+      auto start = std::chrono::high_resolution_clock::now();
       AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
       AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
-      if(allocate_page_malloc(resp_msg->addr)) {
+      if(allocate_page(resp_msg->addr)) {
         resp_msg->status = RES_FAIL;
       } else {
         resp_msg->status = RES_OK;
@@ -413,11 +450,15 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
                    alloc_page_req->resp_rkey);
-
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::micro> duration = end - start;
+      if(duration.count() > 1)
+        std::cout << "allocate latency is " << duration.count() << std::endl;
     } else if(request->type == MSG_FREEPAGE) {
+      auto start = std::chrono::high_resolution_clock::now();
       FreePageRequest* free_page_req = (FreePageRequest*) request;
       FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
-      if(free_page_malloc(free_page_req->addr)) {
+      if(free_page(free_page_req->addr)) {
         resp_msg->status = RES_FAIL;
       } else {
         resp_msg->status = RES_OK;
@@ -425,6 +466,10 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
                    free_page_req->resp_rkey);
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::micro> duration = end - start;
+      if(duration.count() > 1)
+        std::cout << "free latency is " << duration.count() << std::endl;
     } else if (request->type == MSG_REGISTER) {
       /* handle memory register requests */
       RegisterRequest *reg_req = (RegisterRequest *)request;
@@ -450,6 +495,8 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     } else {
       printf("wrong request type\n");
     }
+    
+    
   }
 }
 

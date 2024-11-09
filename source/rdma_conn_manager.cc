@@ -13,7 +13,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
         "max server worker is %d, rpc_conn_num is: %d, reset rpc_conn_num to "
         "%d\n",
         MAX_SERVER_WORKER, rpc_conn_num, MAX_SERVER_WORKER);
-    rpc_conn_num = MAX_SERVER_WORKER;
+    //rpc_conn_num = MAX_SERVER_WORKER;
   }
 
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
