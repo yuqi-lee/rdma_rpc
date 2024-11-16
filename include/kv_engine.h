@@ -157,6 +157,8 @@ class RemoteEngine : public Engine {
   void main_worker();
   void handle_cq_async(ibv_comp_channel *comp_channel, ibv_cq *cq);
 
+  void worker_handel_cq(ibv_cq * cq);
+
   void startWorker(int num);
   //boost::asio::awaitable<void> worker(WorkerInfo worker_info, int num);
   //void run();

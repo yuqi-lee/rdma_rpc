@@ -432,10 +432,32 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
 void RemoteEngine::main_worker() {
   printf("start main worker on core: %d\n", CORE_ID);
   while(true) {
-    for(auto worker_info : active_workers) {
+    for(auto worker_info : active_workers) { // poll all active workers
       worker(worker_info, 1);
     }
   }
+}
+
+void RemoteEngine::worker_handel_cq(ibv_cq * cq) {
+  struct ibv_wc wc;
+  //work_info->cq_mutex.lock();
+  int rc = ibv_poll_cq(cq, 1, &wc);
+  if (rc > 0) {
+    if (IBV_WC_SUCCESS == wc.status) {
+      //
+    } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+      perror("cmd_send IBV_WC_WR_FLUSH_ERR");  
+    } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+      perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR"); 
+    } else {
+      perror("cmd_send ibv_poll_cq status error"); 
+    }
+  } else if (0 == rc) {
+    //
+  } else {
+    perror("ibv_poll_cq fail");
+  }
+  return;
 }
 
 void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
@@ -445,91 +467,71 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
   struct ibv_mr *resp_mr = work_info->resp_mr;
   cmd_resp->notify = NOTIFY_WORK;
 
-  struct ibv_wc wc;
-    //work_info->cq_mutex.lock();
-    int rc = ibv_poll_cq(work_info->cq, 1, &wc);
-    if (rc > 0) {
-      if (IBV_WC_SUCCESS == wc.status) {
-        
-      } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-        perror("cmd_send IBV_WC_WR_FLUSH_ERR");
-        
-      } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-        perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
-        
-      } else {
-        perror("cmd_send ibv_poll_cq status error");
-        
-      }
-    } else if (0 == rc) {
-    } else {
-      perror("ibv_poll_cq fail");
-    }
-    //work_info->cq_mutex.unlock();
+  worker_handel_cq(work_info->cq);
 
-    if (m_stop_) return;
-    if (cmd_msg->notify == NOTIFY_IDLE) return;
-    cmd_msg->notify = NOTIFY_IDLE;
-    RequestsMsg *request = (RequestsMsg *)cmd_msg;
+  if (m_stop_) return;
+  if (cmd_msg->notify == NOTIFY_IDLE) return;
+  cmd_msg->notify = NOTIFY_IDLE;
+  RequestsMsg *request = (RequestsMsg *)cmd_msg;
     
-    if(request->type == MSG_ALLOCATEPAGE) {
-      auto start = std::chrono::high_resolution_clock::now();
-      AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
-      AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
-      if(allocate_page(resp_msg->addr)) {
-        resp_msg->status = RES_FAIL;
-      } else {
-        resp_msg->status = RES_OK;
-      }
-      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                   sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
-                   alloc_page_req->resp_rkey);
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double, std::micro> duration = end - start;
-      if(duration.count() > 10)
-        std::cout << "allocate latency is " << duration.count() << std::endl;
-    } else if(request->type == MSG_FREEPAGE) {
-      auto start = std::chrono::high_resolution_clock::now();
-      FreePageRequest* free_page_req = (FreePageRequest*) request;
-      FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
-      if(free_page(free_page_req->addr)) {
-        resp_msg->status = RES_FAIL;
-      } else {
-        resp_msg->status = RES_OK;
-      }
-      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+  if(request->type == MSG_ALLOCATEPAGE) {
+    auto start = std::chrono::high_resolution_clock::now();
+    AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
+    AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
+    if(allocate_page(resp_msg->addr)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                  sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
+                  alloc_page_req->resp_rkey);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if(duration.count() > 10)
+      std::cout << "allocate latency is " << duration.count() << std::endl;
+  } else if(request->type == MSG_FREEPAGE) {
+    auto start = std::chrono::high_resolution_clock::now();
+    FreePageRequest* free_page_req = (FreePageRequest*) request;
+    FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
+    if(free_page(free_page_req->addr)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
                    free_page_req->resp_rkey);
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double, std::micro> duration = end - start;
-      if(duration.count() > 10)
-        std::cout << "free latency is " << duration.count() << std::endl;
-    } else if (request->type == MSG_REGISTER) {
-      /* handle memory register requests */
-      RegisterRequest *reg_req = (RegisterRequest *)request;
-      // printf("receive a memory register message, size: %ld\n",
-      // reg_req->size);
-      RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
-      if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if(duration.count() > 10)
+      std::cout << "free latency is " << duration.count() << std::endl;
+  } else if (request->type == MSG_REGISTER) {
+    /* handle memory register requests */
+    RegisterRequest *reg_req = (RegisterRequest *)request;
+    // printf("receive a memory register message, size: %ld\n",
+    // reg_req->size);
+    RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
+    if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
                                        reg_req->size)) {
-        resp_msg->status = RES_FAIL;
-      } else {
-        resp_msg->status = RES_OK;
-      }
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
       /* write response */
-      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), reg_req->resp_addr,
                    reg_req->resp_rkey);
-    } else if (request->type == MSG_UNREGISTER) {
-      /* handle memory unregister requests */
-      UnregisterRequest *unreg_req = (UnregisterRequest *)request;
-      printf("receive a memory unregister message, addr: %ld\n",
-             unreg_req->addr);
-      // TODO: implemente memory unregister
-    } else {
-      printf("wrong request type\n");
-    }
-  
+  } else if (request->type == MSG_UNREGISTER) {
+    /* handle memory unregister requests */
+    UnregisterRequest *unreg_req = (UnregisterRequest *)request;
+    printf("receive a memory unregister message, addr: %ld\n",
+           unreg_req->addr);
+    // TODO: implemente memory unregister
+  } else {
+    printf("wrong request type\n");
+  }
+
 }
 
 }  // namespace kv
