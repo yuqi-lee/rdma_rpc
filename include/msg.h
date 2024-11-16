@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <chrono>
 
+#define MAX_BATCH_SIZE 128
+
 namespace kv {
 
 #define NOTIFY_WORK 0xFF
@@ -19,7 +21,7 @@ namespace kv {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE, MSG_ALLOCATEPAGEBATCH, MSG_FREEPAGEBATCH };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -82,6 +84,18 @@ class AllocatePageResponse : public ResponseMsg {
 };
 CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
 
+class AllocatePageBatchRequest : public RequestsMsg {
+ public:
+  uint64_t num_to_allocate;
+};
+CHECK_RDMA_MSG_SIZE(AllocatePageBatchRequest);
+
+class AllocatePageBatchResponse : public ResponseMsg {
+ public:
+  uint64_t addrs[MAX_BATCH_SIZE];
+};
+CHECK_RDMA_MSG_SIZE(AllocatePageBatchResponse);
+
 class FreePageRequest : public RequestsMsg {
  public:
   uint64_t addr;
@@ -92,6 +106,18 @@ class FreePageResponse : public ResponseMsg {
  public:
 };
 CHECK_RDMA_MSG_SIZE(FreePageResponse);
+
+class FreePageBatchRequest : public RequestsMsg {
+ public:
+  uint64_t num_to_free;
+  uint64_t addrs[MAX_BATCH_SIZE];
+};
+CHECK_RDMA_MSG_SIZE(FreePageBatchRequest);
+
+class FreePageBatchResponse : public ResponseMsg {
+ public:
+};
+CHECK_RDMA_MSG_SIZE(FreePageBatchResponse);
 
 struct UnregisterRequest : public RequestsMsg {
  public:

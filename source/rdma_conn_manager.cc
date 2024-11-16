@@ -44,10 +44,26 @@ int ConnectionManager::allocate_remote_page(uint64_t &addr) {
   return ret;
 }
 
+int ConnectionManager::allocate_remote_page_batch(uint64_t* addrs, int num) {
+  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->rdma_allocate_remote_page_batch(addrs, num);
+  m_rpc_conn_queue_->enqueue(conn);
+  return ret;
+}
+
 int ConnectionManager::free_remote_page(uint64_t addr) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
   int ret = conn->rdma_free_remote_page(addr);
+  m_rpc_conn_queue_->enqueue(conn);
+  return ret;
+}
+
+int ConnectionManager::free_remote_page_batch(uint64_t* addrs, int num) {
+  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->rdma_free_remote_page_batch(addrs, num);
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }

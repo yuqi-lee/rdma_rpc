@@ -94,8 +94,20 @@ int LocalEngine::allocate_remote_page(uint64_t& addr) {
   return ret;
 }
 
+int LocalEngine::allocate_remote_page_batch(uint64_t* addrs, int num) {
+  assert(num <= MAX_BATCH_SIZE && num > 0);
+  int ret = m_rdma_conn_->allocate_remote_page_batch(addrs, num);
+  return ret;
+}
+
 int LocalEngine::free_remote_page(uint64_t addr) {
   int ret = m_rdma_conn_->free_remote_page(addr);
+  return ret;
+}
+
+int LocalEngine::free_remote_page_batch(uint64_t* addrs, int num) {
+  assert(num <= MAX_BATCH_SIZE && num > 0);
+  int ret = m_rdma_conn_->free_remote_page_batch(addrs, num);
   return ret;
 }
 

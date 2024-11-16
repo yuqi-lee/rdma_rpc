@@ -61,6 +61,25 @@ struct PageQueue {
     return 0;
   }
 
+  int allocate_batch(uint64_t* addrs, int num) {
+    if (page_num < num) {
+        return -1;
+    }
+
+    int first_chunk_size = std::min((uint64_t)num, capacity - begin);
+    
+    std::copy(pages_addr + begin, pages_addr + begin + first_chunk_size, addrs);
+
+    if (num > first_chunk_size) {
+        std::copy(pages_addr, pages_addr + (num - first_chunk_size), addrs + first_chunk_size);
+    }
+
+    begin = (begin + num) % capacity;
+    page_num -= num;
+
+    return 0; 
+  }
+
   int free(uint64_t addr) {
     if(page_num == capacity)
       return -1;
@@ -68,6 +87,26 @@ struct PageQueue {
     end = (end + 1) % capacity;
     page_num++;
     return 0;
+  }
+
+  int free_batch(uint64_t* addrs, int num) {
+    if (capacity - page_num < num) {
+        return -1;
+
+    int first_chunk_size = std::min((uint64_t)num, capacity - end);
+
+    std::copy(addrs, addrs + first_chunk_size, pages_addr + end);
+
+    if (num > first_chunk_size) {
+        std::copy(addrs + first_chunk_size, addrs + num, pages_addr);
+    }
+
+    end = (end + num) % capacity;
+    page_num += num;
+
+    return 0;  
+  }
+
   }
 };
 
@@ -100,7 +139,9 @@ class LocalEngine : public Engine {
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
   int allocate_remote_page(uint64_t& value);
+  int allocate_remote_page_batch(uint64_t* addr, int num);
   int free_remote_page(uint64_t value);
+  int free_remote_page_batch(uint64_t* addr, int num);
 
  private:
   kv::ConnectionManager *m_rdma_conn_;
@@ -146,6 +187,9 @@ class RemoteEngine : public Engine {
 
   int allocate_page(uint64_t &addr);
   int free_page(uint64_t addr);
+
+  int allocate_page_batch(uint64_t* addr, int num);
+  int free_page_batch(uint64_t* addr, int num);
 
   int allocate_page_regmr(uint64_t &addr);
   int free_page_deregmr(uint64_t addr);

@@ -351,6 +351,94 @@ int RDMAConnection::rdma_allocate_remote_page(uint64_t& page_addr) {
   return 0;
 }
 
+int RDMAConnection::rdma_allocate_remote_page_batch(uint64_t* pages_addr, int num) {
+  memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+  memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+  m_cmd_resp_->notify = NOTIFY_IDLE;
+  AllocatePageBatchRequest *request = (AllocatePageBatchRequest *)m_cmd_msg_;
+  request->resp_addr = (uint64_t)m_cmd_resp_;
+  request->resp_rkey = m_resp_mr_->rkey;
+  request->type = MSG_ALLOCATEPAGEBATCH;
+  request->num_to_allocate = num; // real batch size
+  m_cmd_msg_->notify = NOTIFY_WORK;
+
+  /* send a request to sever */
+  int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                              sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                              m_server_cmd_rkey_);
+  if (ret) {
+    printf("fail to send requests\n");
+    return ret;
+  }
+
+  /* wait for response */
+  auto start = TIME_NOW;
+  while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+    if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+      printf("wait for request completion timeout\n");
+      return -1;
+    }
+  }
+  AllocatePageBatchResponse *resp_msg = (AllocatePageBatchResponse *)m_cmd_resp_;
+  if (resp_msg->status != RES_OK) {
+    printf("allocate a batch of remote pages fail.\n");
+    return -1;
+  }
+
+  for(int i = 0;i < num; ++i) {
+    pages_addr[i] = resp_msg->addrs[i];
+  }
+  
+  // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
+  //  resp_msg->rkey);
+  return 0;
+}
+
+
+int RDMAConnection::rdma_free_remote_page_batch(uint64_t* pages_addr, int num) {
+  memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+  memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+  m_cmd_resp_->notify = NOTIFY_IDLE;
+  FreePageBatchRequest *request = (FreePageBatchRequest *)m_cmd_msg_;
+  request->resp_addr = (uint64_t)m_cmd_resp_;
+  request->resp_rkey = m_resp_mr_->rkey;
+  request->type = MSG_FREEPAGEBATCH;
+  request->num_to_free = num; // real batch size
+  m_cmd_msg_->notify = NOTIFY_WORK;
+
+  for(int i = 0;i < num; ++i) {
+    request->addrs[i] = pages_addr[i];
+  }
+
+  /* send a request to sever */
+  int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                              sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                              m_server_cmd_rkey_);
+  if (ret) {
+    printf("fail to send requests\n");
+    return ret;
+  }
+
+  /* wait for response */
+  auto start = TIME_NOW;
+  while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+    if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+      printf("wait for request completion timeout\n");
+      return -1;
+    }
+  }
+  FreePageBatchResponse *resp_msg = (FreePageBatchResponse *)m_cmd_resp_;
+  if (resp_msg->status != RES_OK) {
+    printf("free a batch of remote pages fail.\n");
+    return -1;
+  }
+  
+  // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
+  //  resp_msg->rkey);
+  return 0;
+}
+
+
 int RDMAConnection::rdma_free_remote_page(uint64_t page_addr) {
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));

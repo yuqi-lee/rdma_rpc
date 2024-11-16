@@ -294,6 +294,15 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
   return ret;
 }
 
+int RemoteEngine::allocate_page_batch(uint64_t* addrs, int num) {
+  assert(num > 0 && num <= MAX_BATCH_SIZE);
+  int ret;
+  page_queue->mtx.lock();
+  ret = this->page_queue->allocate_batch(addrs, num);
+  page_queue->mtx.unlock();
+  return ret;
+}
+
 int RemoteEngine::allocate_page_regmr(uint64_t &addr) {
   auto ptr = malloc(4096);
   auto mr = ibv_reg_mr(m_pd_, ptr, 4096,
@@ -328,6 +337,15 @@ int RemoteEngine::free_page(uint64_t addr) {
   int ret;
   page_queue->mtx.lock();
   ret = this->page_queue->free(addr);
+  page_queue->mtx.unlock();
+  return ret;
+}
+
+int RemoteEngine::free_page_batch(uint64_t* addrs, int num) {
+  assert(num > 0 && num <= MAX_BATCH_SIZE);
+  int ret;
+  page_queue->mtx.lock();
+  ret = this->page_queue->free_batch(addrs, num);
   page_queue->mtx.unlock();
   return ret;
 }
@@ -474,63 +492,130 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
   cmd_msg->notify = NOTIFY_IDLE;
   RequestsMsg *request = (RequestsMsg *)cmd_msg;
     
-  if(request->type == MSG_ALLOCATEPAGE) {
+  switch (request->type) {
+  case MSG_ALLOCATEPAGE: {
     auto start = std::chrono::high_resolution_clock::now();
     AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
-    AllocatePageResponse* resp_msg = (AllocatePageResponse *) cmd_resp;
-    if(allocate_page(resp_msg->addr)) {
+    AllocatePageResponse* resp_msg = (AllocatePageResponse *)cmd_resp;
+
+    if (allocate_page(resp_msg->addr)) {
       resp_msg->status = RES_FAIL;
     } else {
       resp_msg->status = RES_OK;
     }
+
     remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                  sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
-                  alloc_page_req->resp_rkey);
+                 sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
+                 alloc_page_req->resp_rkey);
+
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if(duration.count() > 10)
-      std::cout << "allocate latency is " << duration.count() << std::endl;
-  } else if(request->type == MSG_FREEPAGE) {
-    auto start = std::chrono::high_resolution_clock::now();
-    FreePageRequest* free_page_req = (FreePageRequest*) request;
-    FreePageResponse* resp_msg = (FreePageResponse *) cmd_resp;
-    if(free_page(free_page_req->addr)) {
-      resp_msg->status = RES_FAIL;
-    } else {
-      resp_msg->status = RES_OK;
-    }
-    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                   sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
-                   free_page_req->resp_rkey);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> duration = end - start;
-    if(duration.count() > 10)
-      std::cout << "free latency is " << duration.count() << std::endl;
-  } else if (request->type == MSG_REGISTER) {
-    /* handle memory register requests */
-    RegisterRequest *reg_req = (RegisterRequest *)request;
-    // printf("receive a memory register message, size: %ld\n",
-    // reg_req->size);
-    RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
-    if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
-                                       reg_req->size)) {
-      resp_msg->status = RES_FAIL;
-    } else {
-      resp_msg->status = RES_OK;
-    }
-      /* write response */
-    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                   sizeof(CmdMsgRespBlock), reg_req->resp_addr,
-                   reg_req->resp_rkey);
-  } else if (request->type == MSG_UNREGISTER) {
-    /* handle memory unregister requests */
-    UnregisterRequest *unreg_req = (UnregisterRequest *)request;
-    printf("receive a memory unregister message, addr: %ld\n",
-           unreg_req->addr);
-    // TODO: implemente memory unregister
-  } else {
-    printf("wrong request type\n");
+    if (duration.count() > 10)
+      std::cout << "allocate latency is " << duration.count() << " us" << std::endl;
+
+    break;
   }
+
+  case MSG_FREEPAGE: {
+    auto start = std::chrono::high_resolution_clock::now();
+    FreePageRequest* free_page_req = (FreePageRequest *)request;
+    FreePageResponse* resp_msg = (FreePageResponse *)cmd_resp;
+
+    if (free_page(free_page_req->addr)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
+                 free_page_req->resp_rkey);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if (duration.count() > 10)
+      std::cout << "free latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_ALLOCATEPAGEBATCH: {
+    auto start = std::chrono::high_resolution_clock::now();
+    AllocatePageBatchRequest* allocate_page_batch_req = (AllocatePageBatchRequest *)request;
+    AllocatePageBatchResponse* resp_msg = (AllocatePageBatchResponse *)cmd_resp;
+
+    if (allocate_page_batch(resp_msg->addrs, allocate_page_batch_req->num_to_allocate)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), allocate_page_batch_req->resp_addr,
+                 allocate_page_batch_req->resp_rkey);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if (duration.count() > 10)
+      std::cout << "batch allocate latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_FREEPAGEBATCH: {
+    auto start = std::chrono::high_resolution_clock::now();
+    FreePageBatchRequest* free_page_batch_req = (FreePageBatchRequest *)request;
+    FreePageBatchResponse* resp_msg = (FreePageBatchResponse *)cmd_resp;
+
+    if (free_page_batch(free_page_batch_req->addrs, free_page_batch_req->num_to_free)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), free_page_batch_req->resp_addr,
+                 free_page_batch_req->resp_rkey);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if (duration.count() > 10)
+      std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_REGISTER: {
+    RegisterRequest *reg_req = (RegisterRequest *)request;
+    RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
+
+    if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey, reg_req->size)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                 reg_req->resp_rkey);
+
+    break;
+  }
+
+  case MSG_UNREGISTER: {
+    UnregisterRequest *unreg_req = (UnregisterRequest *)request;
+    printf("receive a memory unregister message, addr: %ld\n", unreg_req->addr);
+
+    // TODO: Implement memory unregister logic here.
+
+    break;
+  }
+
+  default:
+    printf("wrong request type\n");
+    break;
+}
+
 
 }
 
