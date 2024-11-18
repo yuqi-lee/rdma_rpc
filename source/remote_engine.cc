@@ -510,7 +510,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 10)
+    if (duration.count() > 0)
       std::cout << "allocate latency is " << duration.count() << " us" << std::endl;
 
     break;
@@ -533,7 +533,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 10)
+    if (duration.count() > 0)
       std::cout << "free latency is " << duration.count() << " us" << std::endl;
 
     break;
@@ -556,7 +556,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 10)
+    if (duration.count() > 0)
       std::cout << "batch allocate latency is " << duration.count() << " us" << std::endl;
 
     break;
@@ -579,7 +579,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 10)
+    if (duration.count() > 0)
       std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
 
     break;

@@ -385,9 +385,7 @@ int RDMAConnection::rdma_allocate_remote_page_batch(uint64_t* pages_addr, int nu
     return -1;
   }
 
-  for(int i = 0;i < num; ++i) {
-    pages_addr[i] = resp_msg->addrs[i];
-  }
+  std::copy(resp_msg->addrs, resp_msg->addrs + num, pages_addr);
   
   // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
   //  resp_msg->rkey);
@@ -406,9 +404,7 @@ int RDMAConnection::rdma_free_remote_page_batch(uint64_t* pages_addr, int num) {
   request->num_to_free = num; // real batch size
   m_cmd_msg_->notify = NOTIFY_WORK;
 
-  for(int i = 0;i < num; ++i) {
-    request->addrs[i] = pages_addr[i];
-  }
+  std::copy(pages_addr, pages_addr + num, request->addrs);
 
   /* send a request to sever */
   int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,

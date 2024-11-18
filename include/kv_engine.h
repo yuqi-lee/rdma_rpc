@@ -92,6 +92,7 @@ struct PageQueue {
   int free_batch(uint64_t* addrs, int num) {
     if (capacity - page_num < num) {
         return -1;
+    }
 
     int first_chunk_size = std::min((uint64_t)num, capacity - end);
 
@@ -105,7 +106,6 @@ struct PageQueue {
     page_num += num;
 
     return 0;  
-  }
 
   }
 };
