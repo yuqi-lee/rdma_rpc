@@ -351,6 +351,46 @@ int RDMAConnection::rdma_allocate_remote_page(uint64_t& page_addr) {
   return 0;
 }
 
+int RDMAConnection::rdma_get_global_rkey(uint32_t& global_rkey) {
+  memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+  memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+  m_cmd_resp_->notify = NOTIFY_IDLE;
+  GetGlobalRKeyRequest *request = (GetGlobalRKeyRequest *)m_cmd_msg_;
+  request->resp_addr = (uint64_t)m_cmd_resp_;
+  request->resp_rkey = m_resp_mr_->rkey;
+  request->type = MSG_GETGLOBALRKEY;
+  //request->size = 1; // todo
+  m_cmd_msg_->notify = NOTIFY_WORK;
+
+  /* send a request to sever */
+  int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                              sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                              m_server_cmd_rkey_);
+  if (ret) {
+    printf("fail to send requests\n");
+    return ret;
+  }
+
+  /* wait for response */
+  auto start = TIME_NOW;
+  while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+    if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+      printf("wait for request completion timeout\n");
+      return -1;
+    }
+  }
+  GetGlobalRKeyResponse *resp_msg = (GetGlobalRKeyResponse *)m_cmd_resp_;
+  if (resp_msg->status != RES_OK) {
+    printf("get remote global rkey fail.\n");
+    return -1;
+  }
+  global_rkey = resp_msg->global_rkey;
+  
+  // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
+  //  resp_msg->rkey);
+  return 0;
+}
+
 int RDMAConnection::rdma_allocate_remote_page_batch(uint64_t* pages_addr, int num) {
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));

@@ -94,6 +94,11 @@ int LocalEngine::allocate_remote_page(uint64_t& addr) {
   return ret;
 }
 
+int LocalEngine::get_global_rkey(uint32_t& global_rkey) {
+  int ret = m_rdma_conn_->get_global_rkey(global_rkey);
+  return ret;
+}
+
 int LocalEngine::allocate_remote_page_batch(uint64_t* addrs, int num) {
   assert(num <= MAX_BATCH_SIZE && num > 0);
   int ret = m_rdma_conn_->allocate_remote_page_batch(addrs, num);

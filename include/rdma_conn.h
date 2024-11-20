@@ -25,6 +25,7 @@ class RDMAConnection {
   int rdma_allocate_remote_page_batch(uint64_t* pages_addr, int num);
   int rdma_free_remote_page(uint64_t page_addr);
   int rdma_free_remote_page_batch(uint64_t* pages_addr, int num);
+  int rdma_get_global_rkey(uint32_t& global_rkey);
   int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                   uint32_t rkey);
   int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,

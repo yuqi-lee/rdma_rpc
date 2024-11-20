@@ -12,12 +12,8 @@
 #include <unistd.h>
 #include <mutex>
 #include <tbb/concurrent_set.h>
-#include <condition_variable>
 #include <iostream>
 #include <boost/asio.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
-#include <coroutine>
 #include <memory>
 
 #include "kv_engine.h"
@@ -28,6 +24,7 @@
 #include "thread"
 #include "unordered_map"
 
+#define PAGE_SHIFT 12
 #define SHARDING_NUM 32
 static_assert(((SHARDING_NUM & (~SHARDING_NUM + 1)) == SHARDING_NUM),
               "RingBuffer's size must be a positive power of 2");
@@ -35,6 +32,7 @@ static_assert(((SHARDING_NUM & (~SHARDING_NUM + 1)) == SHARDING_NUM),
 namespace kv {
 
 struct PageQueue {
+  uint64_t base_addr;
   uint64_t begin;
   uint64_t end;
   uint64_t* pages_addr;
@@ -42,10 +40,10 @@ struct PageQueue {
   uint64_t capacity;
   std::mutex mtx;
 
-  PageQueue(uint64_t len) : begin(0), end(0), page_num(len), capacity(len) {
+  PageQueue(uint64_t len, uint64_t base_addr) : base_addr(base_addr), begin(0), end(0), page_num(len), capacity(len) {
     pages_addr = new uint64_t[len];
     for(uint64_t i = 0;i < len; ++i)
-      pages_addr[i] = i;
+      pages_addr[i] = base_addr + (i << PAGE_SHIFT);
   }
 
   ~PageQueue() {
@@ -142,6 +140,7 @@ class LocalEngine : public Engine {
   int allocate_remote_page_batch(uint64_t* addr, int num);
   int free_remote_page(uint64_t value);
   int free_remote_page_batch(uint64_t* addr, int num);
+  int get_global_rkey(uint32_t& global_rkey);
 
  private:
   kv::ConnectionManager *m_rdma_conn_;
@@ -213,6 +212,9 @@ class RemoteEngine : public Engine {
   struct ibv_context *m_context_;
   struct PageQueue* page_queue = nullptr;
   boost::asio::io_context io_context_;
+
+  void* base_addr = nullptr;
+  ibv_mr* global_mr = nullptr;
 
   std::unordered_map<uint64_t, ibv_mr*> mrmap;
   std::mutex mrmap_mtx;

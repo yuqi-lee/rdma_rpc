@@ -1,8 +1,10 @@
 #include "kv_engine.h"
 
 #define MEM_ALIGN_SIZE 4096
-#define TOTAL_PAGES (128 << 10 << 10)
 #define CORE_ID 31
+
+const uint64_t TOTAL_PAGES =  (10 << 10 << 10);
+
 
 namespace kv {
 
@@ -34,7 +36,20 @@ void set_thread_affinity(std::thread* t, int core_id) {
 bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
 
-  this->page_queue = new PageQueue(TOTAL_PAGES);
+  base_addr = (void*) malloc((TOTAL_PAGES << PAGE_SHIFT) + (1 << PAGE_SHIFT));
+  base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
+
+  global_mr = ibv_reg_mr(m_pd_, base_addr, (TOTAL_PAGES << PAGE_SHIFT),
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
+  if(!global_mr) {
+    perror("global memory region register fail.");
+    return false;
+  }
+
+  std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
+
+  this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
   if(this->page_queue == nullptr) {
     perror("page queue init fail.");
     return false;
@@ -581,6 +596,20 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     std::chrono::duration<double, std::micro> duration = end - start;
     if (duration.count() > 0)
       std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_GETGLOBALRKEY: {
+    GetGlobalRKeyRequest *reg_req = (GetGlobalRKeyRequest *)request;
+    GetGlobalRKeyResponse *resp_msg = (GetGlobalRKeyResponse *)cmd_resp;
+
+    assert(global_mr != nullptr);
+    resp_msg->global_rkey = global_mr->rkey;
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                 reg_req->resp_rkey);
 
     break;
   }
