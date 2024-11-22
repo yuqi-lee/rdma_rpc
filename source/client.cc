@@ -13,8 +13,8 @@
 
 #define ALLOCATE_BUFFER_SIZE (128 << 10) // 512MB
 #define DEALLOCATE_BUFFER_SIZE (512 << 10) // 2GB
-#define ALLOCATOR_DEVICE "/dev/shm/allocator_page_queue"
-#define DEALLOCATOR_DEVICE "/dev/shm/deallocator_page_queue"
+#define ALLOCATOR_DEVICE "/allocator_page_queue"
+#define DEALLOCATOR_DEVICE "/deallocator_page_queue"
 
 struct allocator_page_queue {
     uint64_t rkey = 0;
@@ -29,16 +29,18 @@ struct deallocator_page_queue {
     uint64_t pages[DEALLOCATE_BUFFER_SIZE];
 };
 
-struct allocator_page_queue *queue_allocator = NULL;
-struct deallocator_page_queue *queue_deallocator = NULL;
+struct allocator_page_queue *queue_allocator = nullptr;
+struct deallocator_page_queue *queue_deallocator = nullptr;
 
 int page_queue_shm_init() {
-  int fd = open(ALLOCATOR_DEVICE, O_RDWR);
+  int fd = shm_open(ALLOCATOR_DEVICE, O_RDWR, 0);
   if (fd < 0) {
-    perror("Failed to open allocator device");
-    return -1;
+    fd = shm_open(ALLOCATOR_DEVICE, O_CREAT | O_EXCL | O_RDWR, 0600);
+    if (ftruncate(fd, sizeof(struct allocator_page_queue)) == -1) {
+      perror("ftruncate");
+      return -1;
+    }
   }
-
   queue_allocator = (allocator_page_queue *)mmap(NULL, sizeof(struct allocator_page_queue), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (queue_allocator == MAP_FAILED) {
     perror("Failed to mmap queue_allocator.");
@@ -46,15 +48,17 @@ int page_queue_shm_init() {
     return -1;
   }
 
-  fd = open(DEALLOCATOR_DEVICE, O_RDWR);
+  fd = shm_open(DEALLOCATOR_DEVICE, O_RDWR, 0);
   if (fd < 0) {
-    perror("Failed to open allocator device");
-    return -1;
+    fd = shm_open(DEALLOCATOR_DEVICE, O_CREAT | O_EXCL | O_RDWR, 0600);
+    if (ftruncate(fd, sizeof(struct deallocator_page_queue)) == -1) {
+      perror("ftruncate");
+      return -1;
+    }
   }
-
   queue_deallocator = (deallocator_page_queue *)mmap(NULL, sizeof(struct deallocator_page_queue), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (queue_deallocator == MAP_FAILED) {
-    perror("Failed to mmap queue_allocator.");
+    perror("Failed to mmap queue_deallocator.");
     close(fd);
     return -1;
   }
@@ -197,11 +201,12 @@ int main(int argc, char *argv[]) {
   const std::string rdma_port(argv[2]);
   const uint64_t interval = atoi(argv[3]);
 
+  page_queue_shm_init();
   kv::LocalEngine *kv_imp = new kv::LocalEngine();
   assert(kv_imp);
   kv_imp->start(rdma_addr, rdma_port);
 
-  page_queue_shm_init();
+  
   get_remote_global_rkey(kv_imp);
   fill_allocate_page_queue(kv_imp);
 

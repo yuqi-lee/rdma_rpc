@@ -19,7 +19,7 @@ namespace kv {
 /* RDMA connection */
 class RDMAConnection {
  public:
-  int init(const std::string ip, const std::string port);
+  int init(const std::string ip, const std::string port, uint8_t access_type);
   int register_remote_memory(uint64_t& addr, uint32_t &rkey, uint64_t size);
   int rdma_allocate_remote_page(uint64_t& page_addr);
   int rdma_allocate_remote_page_batch(uint64_t* pages_addr, int num);

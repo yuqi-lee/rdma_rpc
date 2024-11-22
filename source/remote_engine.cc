@@ -180,7 +180,8 @@ void RemoteEngine::handle_connection() {
     if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
       struct rdma_cm_id *cm_id = event->id;
       rdma_ack_cm_event(event);
-      create_connection(cm_id);
+      ConnMesg msg = *(ConnMesg*)event->param.conn.private_data;
+      create_connection(cm_id, msg.access_type);
     } else if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
       rdma_ack_cm_event(event);
     } else {
@@ -190,7 +191,7 @@ void RemoteEngine::handle_connection() {
   printf("exit handle_connection\n");
 }
 
-int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
+int RemoteEngine::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type) {
   if (!m_pd_) {
     perror("ibv_pibv_alloc_pdoll_cq fail");
     return -1;
@@ -254,21 +255,24 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
-  int num = m_worker_num_++;
-  if (m_worker_num_ <= MAX_SERVER_WORKER) {
-    assert(m_worker_info_[num] == nullptr);
-    m_worker_info_[num] = new WorkerInfo();
-    m_worker_info_[num]->cmd_msg = cmd_msg;
-    m_worker_info_[num]->cmd_resp_msg = cmd_resp;
-    m_worker_info_[num]->msg_mr = msg_mr;
-    m_worker_info_[num]->resp_mr = resp_mr;
-    m_worker_info_[num]->cm_id = cm_id;
-    m_worker_info_[num]->cq = cq;
-    m_worker_info_[num]->comp_channel = comp_chan;
-    assert(m_worker_threads_[num] == nullptr);
-    active_workers.insert(m_worker_info_[num]);
-    std::cout << "add a new worker: " << num << std::endl;
+  if(connect_type == CONN_ONESIDE) {
+    int num = m_worker_num_++;
+    if (m_worker_num_ <= MAX_SERVER_WORKER) {
+      assert(m_worker_info_[num] == nullptr);
+      m_worker_info_[num] = new WorkerInfo();
+      m_worker_info_[num]->cmd_msg = cmd_msg;
+      m_worker_info_[num]->cmd_resp_msg = cmd_resp;
+      m_worker_info_[num]->msg_mr = msg_mr;
+      m_worker_info_[num]->resp_mr = resp_mr;
+      m_worker_info_[num]->cm_id = cm_id;
+      m_worker_info_[num]->cq = cq;
+      m_worker_info_[num]->comp_channel = comp_chan;
+      assert(m_worker_threads_[num] == nullptr);
+      active_workers.insert(m_worker_info_[num]);
+      std::cout << "add a new worker: " << num << std::endl;
+    }
   }
+  
 
   //m_worker_threads_[0] =
         //new std::thread(&RemoteEngine::worker, this, m_worker_info_[num], num);

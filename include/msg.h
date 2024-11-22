@@ -25,6 +25,8 @@ enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE, MSG
 
 enum ResStatus { RES_OK, RES_FAIL };
 
+enum ConnTYPE {CONN_RPC, CONN_ONESIDE};
+
 #define CHECK_RDMA_MSG_SIZE(T) \
   static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
 
@@ -138,5 +140,9 @@ CHECK_RDMA_MSG_SIZE(UnregisterRequest);
 
 struct UnregisterResponse : public ResponseMsg {};
 CHECK_RDMA_MSG_SIZE(UnregisterResponse);
+
+struct ConnMesg {
+    uint8_t access_type;
+};
 
 }  // namespace kv

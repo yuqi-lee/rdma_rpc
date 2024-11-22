@@ -2,7 +2,7 @@
 
 namespace kv {
 
-int RDMAConnection::init(const std::string ip, const std::string port) {
+int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type) {
   m_cm_channel_ = rdma_create_event_channel();
   if (!m_cm_channel_) {
     perror("rdma_create_event_channel fail");
@@ -102,13 +102,14 @@ int RDMAConnection::init(const std::string ip, const std::string port) {
     return -1;
   }
 
+  ConnMesg msg = {access_type};
   struct rdma_conn_param conn_param = {};
-    conn_param.responder_resources = 16;
-    //conn_param.private_data = &init_msg;
-    //conn_param.private_data_len = sizeof(CNodeInit);
-    conn_param.initiator_depth = 16;
-    conn_param.retry_count = 7;
-    conn_param.rnr_retry_count = 7;
+  conn_param.responder_resources = 16;
+  conn_param.private_data = &msg;
+  conn_param.private_data_len = sizeof(ConnMesg);
+  conn_param.initiator_depth = 16;
+  conn_param.retry_count = 7;
+  conn_param.rnr_retry_count = 7;
   if (rdma_connect(m_cm_id_, &conn_param)) {
     perror("rdma_connect fail");
     return -1;

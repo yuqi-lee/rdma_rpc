@@ -18,7 +18,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port)) {
+    if (conn->init(ip, port, CONN_RPC)) {
       // TODO: release resources
       return -1;
     }
@@ -27,7 +27,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port)) {
+    if (conn->init(ip, port, CONN_ONESIDE)) {
       // TODO: release resources
       return -1;
     }
