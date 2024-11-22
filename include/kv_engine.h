@@ -88,7 +88,7 @@ struct PageQueue {
   }
 
   int free_batch(uint64_t* addrs, int num) {
-    if (capacity - page_num < num) {
+    if (capacity - page_num < (uint64_t)num) {
         return -1;
     }
 

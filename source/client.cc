@@ -17,16 +17,16 @@
 #define DEALLOCATOR_DEVICE "/deallocator_page_queue"
 
 struct allocator_page_queue {
-    uint64_t rkey = 0;
+    uint32_t rkey = 0;
     uint64_t begin = 0;
     uint64_t end = 0;
-    uint64_t pages[ALLOCATE_BUFFER_SIZE];
+    uint64_t pages[ALLOCATE_BUFFER_SIZE] = {0};
 };
 
 struct deallocator_page_queue {
     uint64_t begin = 0;
     uint64_t end = 0;
-    uint64_t pages[DEALLOCATE_BUFFER_SIZE];
+    uint64_t pages[DEALLOCATE_BUFFER_SIZE] = {0};
 };
 
 struct allocator_page_queue *queue_allocator = nullptr;
@@ -97,7 +97,7 @@ uint64_t get_length_deallocator() {
 int push_queue_allocator(uint64_t page_addr) {
     int ret = 0;
     uint64_t prev_end = queue_allocator->end;
-    while(get_length_allocator() == ALLOCATE_BUFFER_SIZE - 1) ;
+    while(get_length_allocator() >= ALLOCATE_BUFFER_SIZE - 1) ;
     queue_allocator->end = (queue_allocator->end + 1) % ALLOCATE_BUFFER_SIZE;
     queue_allocator->pages[prev_end] = page_addr;
     return ret;
@@ -129,15 +129,24 @@ int get_remote_global_rkey(kv::LocalEngine *kv_imp) {
 
 int fill_allocate_page_queue(kv::LocalEngine *kv_imp) {
   uint64_t* remote_addrs = new uint64_t[MAX_BATCH_SIZE];
+  uint64_t count = 0;
   while(true) {
     uint64_t len = get_length_allocator();
     if(len < ALLOCATE_BUFFER_SIZE - 1) {
       uint64_t batch_size = std::min(uint64_t(MAX_BATCH_SIZE), ALLOCATE_BUFFER_SIZE - 1 - len);
       kv_imp->allocate_remote_page_batch(remote_addrs, batch_size);
-      for(int i = 0;i < batch_size; ++i) {
+      if(count < 1) {
+        for(uint64_t i = 0;i < batch_size; ++i) {
+          std::cout << (void*) remote_addrs[i] << " ";
+        }
+        std::cout << std::endl;
+      }
+      count++;
+      for(uint64_t i = 0;i < batch_size; ++i) {
         push_queue_allocator(remote_addrs[i]);
       }
     } else {
+      std::cout << "fill allocate page queue successfully. allocate page queue len is " << get_length_allocator() << std::endl;
       break;
     }
   }
@@ -150,7 +159,7 @@ void throughput_test(kv::LocalEngine *kv_imp,
   //assert(kv_imp);
   //kv_imp->start(ip, port);
   uint64_t addr;
-  //uint64_t count = 0;
+  uint64_t count = 0;
   auto start = std::chrono::high_resolution_clock::now();
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> duration = end - start;
@@ -161,15 +170,16 @@ void throughput_test(kv::LocalEngine *kv_imp,
   uint64_t remote_addr;
 
   while(true) {
+    count++;
     uint64_t cur_queue_allocator_len = get_length_allocator();
     if(cur_queue_allocator_len < ALLOCATE_BUFFER_SIZE - 1) {
       if(get_length_deallocator() > 0) {
         remote_addr = pop_queue_deallocator();
         push_queue_allocator(remote_addr);
       } else {
-        int batch_size = MAX_BATCH_SIZE > (ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len) ? (int)(ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len) : MAX_BATCH_SIZE;
+        uint64_t batch_size = std::min(uint64_t(MAX_BATCH_SIZE), ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len);
         kv_imp->allocate_remote_page_batch(remote_addrs, batch_size);
-        for(int i = 0;i < batch_size; ++i) {
+        for(uint64_t i = 0;i < batch_size; ++i) {
           push_queue_allocator(remote_addrs[i]);
         }
       }
@@ -183,6 +193,12 @@ void throughput_test(kv::LocalEngine *kv_imp,
         kv_imp->free_remote_page_batch(remote_addrs, batch_size);
       }
     }
+    if(count % 500000000 == 0) {
+      std::cout << "count: " << count << std::endl;
+      std::cout << "allocator queue len:" << get_length_allocator() << std::endl;
+      std::cout << "deallocator queue len:" << get_length_deallocator() << std::endl;
+    }
+    
   }
   
   

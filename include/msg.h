@@ -25,7 +25,7 @@ enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE, MSG
 
 enum ResStatus { RES_OK, RES_FAIL };
 
-enum ConnTYPE {CONN_RPC, CONN_ONESIDE};
+enum ConnTYPE {CONN_ONESIDE, CONN_RPC};
 
 #define CHECK_RDMA_MSG_SIZE(T) \
   static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
