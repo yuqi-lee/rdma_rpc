@@ -44,7 +44,7 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     std::cout << "page queue init success" << std::endl;
   }
 
-  const std::string device = "mlx5_0";
+  const std::string device = "mlx5_2";
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
   m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
@@ -255,7 +255,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_ty
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
-  if(connect_type == CONN_ONESIDE) {
+  if(connect_type == CONN_RPC) {
     int num = m_worker_num_++;
     if (m_worker_num_ <= MAX_SERVER_WORKER) {
       assert(m_worker_info_[num] == nullptr);
