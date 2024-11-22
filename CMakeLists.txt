@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.9)
 project(POLAR_CONTEST)
 
-set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_BUILD_TYPE "Debug")
 
 set(RDMA_LIB "-lrdmacm -libverbs -ltbb")
 set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")

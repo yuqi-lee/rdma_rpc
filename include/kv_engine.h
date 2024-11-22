@@ -13,7 +13,7 @@
 #include <mutex>
 #include <tbb/concurrent_set.h>
 #include <iostream>
-#include <boost/asio.hpp>
+//#include <boost/asio.hpp>
 #include <memory>
 
 #include "kv_engine.h"
@@ -211,7 +211,7 @@ class RemoteEngine : public Engine {
   struct ibv_pd *m_pd_;
   struct ibv_context *m_context_;
   struct PageQueue* page_queue = nullptr;
-  boost::asio::io_context io_context_;
+  //boost::asio::io_context io_context_;
 
   void* base_addr = nullptr;
   ibv_mr* global_mr = nullptr;
@@ -226,7 +226,7 @@ class RemoteEngine : public Engine {
   std::thread **m_worker_threads_;
   std::thread *main_worker_thread_;
   //std::thread *async_cq_thread;
-  std::condition_variable cv;
+  //std::condition_variable cv;
   std::mutex mtx;
 };
 

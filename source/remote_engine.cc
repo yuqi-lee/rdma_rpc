@@ -36,19 +36,6 @@ void set_thread_affinity(std::thread* t, int core_id) {
 bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
 
-  base_addr = (void*) malloc((TOTAL_PAGES << PAGE_SHIFT) + (1 << PAGE_SHIFT));
-  base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
-
-  global_mr = ibv_reg_mr(m_pd_, base_addr, (TOTAL_PAGES << PAGE_SHIFT),
-                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
-  if(!global_mr) {
-    perror("global memory region register fail.");
-    return false;
-  }
-
-  std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
-
   this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
   if(this->page_queue == nullptr) {
     perror("page queue init fail.");
@@ -57,7 +44,7 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     std::cout << "page queue init success" << std::endl;
   }
 
-  const std::string device = "mlx5_2";
+  const std::string device = "mlx5_0";
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
   m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
@@ -130,6 +117,23 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   }*/
   
   //main_worker_thread_->join();
+
+  if (posix_memalign(&base_addr, (1 << PAGE_SHIFT), (TOTAL_PAGES << PAGE_SHIFT))) {
+    perror("posix_memalign failed");
+    return false;
+  } 
+  std::cout << "successfully malloc " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes memory block at " << base_addr << std::endl;
+  //base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
+
+  global_mr = ibv_reg_mr(m_pd_, base_addr, (TOTAL_PAGES << PAGE_SHIFT),
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     IBV_ACCESS_REMOTE_WRITE);
+  if(!global_mr) {
+    perror("global memory region register fail.");
+    return false;
+  }
+
+  std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
 
   return true;
 }
