@@ -47,6 +47,7 @@ int page_queue_shm_init() {
     close(fd);
     return -1;
   }
+  memset(queue_allocator, 0, sizeof(struct allocator_page_queue));
 
   fd = shm_open(DEALLOCATOR_DEVICE, O_RDWR, 0);
   if (fd < 0) {
@@ -62,6 +63,7 @@ int page_queue_shm_init() {
     close(fd);
     return -1;
   }
+  memset(queue_deallocator, 0, sizeof(struct deallocator_page_queue));
 
   return 0;
 }
@@ -96,7 +98,7 @@ int push_queue_allocator(uint64_t page_addr) {
     int ret = 0;
     uint64_t prev_end = queue_allocator->end;
     while(get_length_allocator() == ALLOCATE_BUFFER_SIZE - 1) ;
-    queue_allocator->end = (queue_allocator->end + 1) % DEALLOCATE_BUFFER_SIZE;
+    queue_allocator->end = (queue_allocator->end + 1) % ALLOCATE_BUFFER_SIZE;
     queue_allocator->pages[prev_end] = page_addr;
     return ret;
 }
