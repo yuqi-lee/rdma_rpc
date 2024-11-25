@@ -3,7 +3,7 @@
 #define MEM_ALIGN_SIZE 4096
 #define CORE_ID 31
 
-const uint64_t TOTAL_PAGES =  (10 << 10 << 10);
+const uint64_t TOTAL_PAGES =  (16 << 10 << 10);
 
 
 namespace kv {
@@ -35,14 +35,6 @@ void set_thread_affinity(std::thread* t, int core_id) {
  */
 bool RemoteEngine::start( const std::string addr, const std::string port) {
   m_stop_ = false;
-
-  this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
-  if(this->page_queue == nullptr) {
-    perror("page queue init fail.");
-    return false;
-  } else {
-    std::cout << "page queue init success" << std::endl;
-  }
 
   const std::string device = "mlx5_2";
 
@@ -134,6 +126,14 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   }
 
   std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
+
+  this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
+  if(this->page_queue == nullptr) {
+    perror("page queue init fail.");
+    return false;
+  } else {
+    std::cout << "page queue init success" << std::endl;
+  }
 
   return true;
 }
