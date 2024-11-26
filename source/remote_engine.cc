@@ -1,4 +1,6 @@
 #include "kv_engine.h"
+#include <unistd.h> 
+#include <sys/mman.h>
 
 #define MEM_ALIGN_SIZE 4096
 #define CORE_ID 31
@@ -110,10 +112,17 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   
   //main_worker_thread_->join();
 
-  if (posix_memalign(&base_addr, (1 << PAGE_SHIFT), (TOTAL_PAGES << PAGE_SHIFT))) {
+  base_addr = mmap((void*)0x1000000000, (TOTAL_PAGES << PAGE_SHIFT), PROT_READ | PROT_WRITE, 
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+  if(base_addr == MAP_FAILED) {
+    perror("mmap failed.");
+    return -1;
+  }
+  /*
+  if (posix_memalign(&base_addr, (1 << SWAP_AREA_SHIFT), (TOTAL_PAGES << PAGE_SHIFT))) {
     perror("posix_memalign failed");
     return false;
-  } 
+  } */
   std::cout << "successfully malloc " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes memory block at " << base_addr << std::endl;
   //base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
 
@@ -320,9 +329,9 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
 int RemoteEngine::allocate_page_batch(uint64_t* addrs, int num) {
   assert(num > 0 && num <= MAX_BATCH_SIZE);
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->allocate_batch(addrs, num);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -367,9 +376,9 @@ int RemoteEngine::free_page(uint64_t addr) {
 int RemoteEngine::free_page_batch(uint64_t* addrs, int num) {
   assert(num > 0 && num <= MAX_BATCH_SIZE);
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->free_batch(addrs, num);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -579,7 +588,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 0)
+    if (duration.count() > 2)
       std::cout << "batch allocate latency is " << duration.count() << " us" << std::endl;
 
     break;
@@ -602,7 +611,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 0)
+    if (duration.count() > 2)
       std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
 
     break;

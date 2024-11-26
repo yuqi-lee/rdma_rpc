@@ -25,6 +25,7 @@
 #include "unordered_map"
 
 #define PAGE_SHIFT 12
+#define SWAP_AREA_SHIFT 36
 #define SHARDING_NUM 32
 static_assert(((SHARDING_NUM & (~SHARDING_NUM + 1)) == SHARDING_NUM),
               "RingBuffer's size must be a positive power of 2");
