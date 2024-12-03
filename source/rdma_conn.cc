@@ -336,7 +336,7 @@ int RDMAConnection::rdma_allocate_remote_page(uint64_t& page_addr) {
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: allocate_remote_page.\n");
       return -1;
     }
   }
@@ -376,7 +376,7 @@ int RDMAConnection::rdma_get_global_rkey(uint32_t& global_rkey) {
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: get_global_rkey\n");
       return -1;
     }
   }
@@ -416,7 +416,7 @@ int RDMAConnection::rdma_allocate_remote_page_batch(uint64_t* pages_addr, int nu
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: allocate_remote_page_batch.\n");
       return -1;
     }
   }
@@ -460,7 +460,7 @@ int RDMAConnection::rdma_free_remote_page_batch(uint64_t* pages_addr, int num) {
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: free_remote_page_batch\n");
       return -1;
     }
   }
@@ -501,7 +501,7 @@ int RDMAConnection::rdma_free_remote_page(uint64_t page_addr) {
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: free_remote_page.\n");
       return -1;
     }
   }
@@ -542,7 +542,7 @@ int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
   auto start = TIME_NOW;
   while (m_cmd_resp_->notify == NOTIFY_IDLE) {
     if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-      printf("wait for request completion timeout\n");
+      printf("wait for request completion timeout: register_remote_memory\n");
       return -1;
     }
   }
