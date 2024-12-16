@@ -258,7 +258,36 @@ void reclaim_filler(kv::LocalEngine *kv_imp, const uint64_t interval) {
   }
 }
 
-void throughput_test(kv::LocalEngine *kv_imp, 
+void deallocation_thread(kv::LocalEngine *kv_imp, const uint64_t interval) {
+  uint64_t addr;
+  uint64_t count = 0;
+  double max_duratuon = 0.0;
+  std::vector<double> res;
+  uint64_t* remote_addrs = new uint64_t[MAX_BATCH_SIZE];
+  uint64_t remote_addr;
+  int ret;
+
+  while(true) {
+    count++;
+    for(int32_t id = 0; id < NUM_ONLINE_CPUS; ++id) {
+      uint64_t cur_queue_deallocator_len = get_length_deallocator(id);
+      if(cur_queue_deallocator_len > 0) {
+        int batch_size = MAX_BATCH_SIZE > cur_queue_deallocator_len ? (int)cur_queue_deallocator_len : MAX_BATCH_SIZE;
+        for(int i = 0;i < batch_size; ++i) {
+          remote_addrs[i] = pop_queue_deallocator(id);
+        }
+        ret = kv_imp->free_remote_page_batch(remote_addrs, batch_size);
+        if(ret) {
+          std::cout << "free_remote_page_batch fail." << std::endl;
+          continue;
+        }
+      }
+    }
+  }
+}
+
+
+void allocation_thread(kv::LocalEngine *kv_imp, 
                     const uint64_t interval, const uint32_t begin, const uint32_t end) {
   //kv::LocalEngine *kv_imp = new kv::LocalEngine();
   //assert(kv_imp);
@@ -279,36 +308,16 @@ void throughput_test(kv::LocalEngine *kv_imp,
     for(uint32_t id = begin;id <= end; ++id) {
       uint64_t cur_queue_allocator_len = get_length_allocator(id);
       if(cur_queue_allocator_len < ALLOCATE_BUFFER_SIZE - 1) {
-        if(get_length_deallocator(id) > 0) {
-          remote_addr = pop_queue_deallocator(id);
-          assert(remote_addr != 0);
-          assert((remote_addr & ((1 << PAGE_SHIFT) - 1)) == 0);
-          push_queue_allocator(remote_addr, id);
-        } else {
-          uint64_t batch_size = std::min(uint64_t(MAX_BATCH_SIZE), ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len);
-          ret = kv_imp->allocate_remote_page_batch(remote_addrs, batch_size);
-          if(ret) {
-            std::cout << "allocate_remote_page_batch fail." << std::endl;
-            continue;
-          }
-          for(uint64_t i = 0;i < batch_size; ++i) {
-            assert(remote_addrs[i] != 0);
-            assert((remote_addrs[i] & ((1 << PAGE_SHIFT) - 1)) == 0);
-            push_queue_allocator(remote_addrs[i], id);
-          }
+        uint64_t batch_size = std::min(uint64_t(MAX_BATCH_SIZE), ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len);
+        ret = kv_imp->allocate_remote_page_batch(remote_addrs, batch_size);
+        if(ret) {
+          std::cout << "allocate_remote_page_batch fail." << std::endl;
+          continue;
         }
-      } else {
-        uint64_t cur_queue_deallocator_len = get_length_deallocator(id);
-        if(cur_queue_deallocator_len > 0) {
-          int batch_size = MAX_BATCH_SIZE > cur_queue_deallocator_len ? (int)cur_queue_deallocator_len : MAX_BATCH_SIZE;
-          for(int i = 0;i < batch_size; ++i) {
-            remote_addrs[i] = pop_queue_deallocator(id);
-          }
-          ret = kv_imp->free_remote_page_batch(remote_addrs, batch_size);
-          if(ret) {
-            std::cout << "free_remote_page_batch fail." << std::endl;
-            continue;
-          }
+        for(uint64_t i = 0;i < batch_size; ++i) {
+          assert(remote_addrs[i] != 0);
+          assert((remote_addrs[i] & ((1 << PAGE_SHIFT) - 1)) == 0);
+          push_queue_allocator(remote_addrs[i], id);
         }
       }
     }
@@ -353,9 +362,10 @@ int main(int argc, char *argv[]) {
   get_remote_global_rkey(kv_imps[0]);
 
 
-  auto t1  = new std::thread(&throughput_test, kv_imps[0], interval, 0, 0);
-  auto t2  = new std::thread(&throughput_test, kv_imps[1], interval, 1, 47);
+  auto t1  = new std::thread(&allocation_thread, kv_imps[0], interval, 0, 0);
+  auto t2  = new std::thread(&allocation_thread, kv_imps[1], interval, 1, 47);
   auto t3  = new std::thread(&reclaim_filler, kv_imps[2], interval);
+  auto t4  = new std::thread(&deallocation_thread, kv_imps[1], interval);
   t1->join();
   t2->join();
 
