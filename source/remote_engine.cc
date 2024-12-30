@@ -347,7 +347,7 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
 
 int RemoteEngine::allocate_block(uint64_t &addr, uint32_t &rkey) {
   int ret;
-  ret = this->page_queue->allocate(addr);
+  ret = this->block_queue->allocate(addr, rkey);
   return ret;
 }
 

@@ -191,8 +191,8 @@ class LocalEngine : public Engine {
 
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
-  bool write_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey);
-  bool read_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey);
+  bool write_block(uint64_t laddr, uint64_t raddr, uint64_t len, uint32_t rkey);
+  bool read_block(uint64_t laddr, uint64_t raddr, uint64_t len, uint32_t rkey);
 
   int allocate_remote_page(uint64_t& value);
   int allocate_remote_block(uint64_t& value, uint32_t& rkey);

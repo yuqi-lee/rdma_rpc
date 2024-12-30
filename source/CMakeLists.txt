@@ -10,6 +10,7 @@ add_definitions(-DTBB_PREVIEW_CONCURRENT_ORDERED_CONTAINERS)
 add_executable(server server.cc remote_engine.cc  rdma_conn.cc rdma_conn_manager.cc)
 add_executable(client client.cc local_engine.cc rdma_conn.cc rdma_conn_manager.cc rdma_mem_pool.cc)
 add_executable(latency_test latency_test.cc local_engine.cc rdma_conn.cc rdma_conn_manager.cc rdma_mem_pool.cc)
+add_executable(multi_mrs multi_mrs.cc local_engine.cc rdma_conn.cc rdma_conn_manager.cc rdma_mem_pool.cc)
 
 
 target_link_libraries(server
@@ -26,6 +27,12 @@ target_link_libraries(client
 )
 
 target_link_libraries(latency_test
+    ibverbs
+    rdmacm
+    rt
+)
+
+target_link_libraries(multi_mrs
     ibverbs
     rdmacm
     rt
