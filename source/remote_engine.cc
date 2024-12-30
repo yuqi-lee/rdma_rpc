@@ -5,9 +5,9 @@
 #define MEM_ALIGN_SIZE 4096
 #define CORE_ID 31
 
-const uint64_t TOTAL_PAGES =  (16 << 10 << 10);
-const uint64_t BLOCK_SIZE =  (2 << 10 << 10);
-const uint64_t REMOTE_MEM_SIZE =  (32 << 10 << 10 << 10);
+const uint64_t TOTAL_PAGES =  16ULL * 1024 * 1024;
+const uint64_t BLOCK_SIZE =  2ULL * 1024 * 1024;
+const uint64_t REMOTE_MEM_SIZE =  32ULL * 1024 * 1024 * 1024;
 
 
 namespace kv {
