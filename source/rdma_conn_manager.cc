@@ -44,6 +44,14 @@ int ConnectionManager::allocate_remote_page(uint64_t &addr) {
   return ret;
 }
 
+int ConnectionManager::allocate_remote_block(uint64_t &addr, uint32_t &rkey) {
+  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->rdma_allocate_remote_block(addr, rkey);
+  m_rpc_conn_queue_->enqueue(conn);
+  return ret;
+}
+
 int ConnectionManager::get_global_rkey(uint32_t& global_rkey) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);

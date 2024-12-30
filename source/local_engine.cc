@@ -89,8 +89,23 @@ bool LocalEngine::write(const std::string key, const std::string value) {
   return true;
 }
 
+bool LocalEngine::write_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey) {
+  int ret = m_rdma_conn_->remote_write((void *)laddr, len,
+                                       raddr, rkey);
+}
+
+bool LocalEngine::read_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey) {
+  int ret = m_rdma_conn_->remote_read((void *)laddr, len,
+                                       raddr, rkey);
+}
+
 int LocalEngine::allocate_remote_page(uint64_t& addr) {
   int ret = m_rdma_conn_->allocate_remote_page(addr);
+  return ret;
+}
+
+int LocalEngine::allocate_remote_block(uint64_t& addr, uint32_t& rkey) {
+  int ret = m_rdma_conn_->allocate_remote_block(addr, rkey);
   return ret;
 }
 

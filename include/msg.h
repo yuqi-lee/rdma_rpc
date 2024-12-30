@@ -21,7 +21,7 @@ namespace kv {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE, MSG_ALLOCATEPAGEBATCH, MSG_FREEPAGEBATCH, MSG_GETGLOBALRKEY };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_ALLOCATEPAGE, MSG_FREEPAGE, MSG_ALLOCATEPAGEBATCH, MSG_FREEPAGEBATCH, MSG_GETGLOBALRKEY, MSG_ALLOCATEBLOCK, MSG_FREEBLOCK};
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -83,6 +83,19 @@ CHECK_RDMA_MSG_SIZE(AllocatePageRequest);
 class AllocatePageResponse : public ResponseMsg {
  public:
   uint64_t addr;
+};
+CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
+
+class AllocateBlockRequest : public RequestsMsg {
+ public:
+  uint64_t size;
+};
+CHECK_RDMA_MSG_SIZE(AllocatePageRequest);
+
+class AllocateBlockResponse : public ResponseMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
 };
 CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
 

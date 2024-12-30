@@ -203,6 +203,44 @@ int get_remote_global_rkey(kv::LocalEngine *kv_imp) {
   return 0;
 }
 
+
+struct local_pool {
+  kv::LocalEngine *conn;
+  uint64_t* remote_addrs;
+  uint32_t idx;
+
+  uint64_t allocate_one_page() {
+    uint64_t res;
+    int ret;
+    if(idx < MAX_BATCH_SIZE) {
+      res = remote_addrs[idx];
+      idx++;
+    } else {
+      do {
+        ret = conn->allocate_remote_page_batch(remote_addrs, MAX_BATCH_SIZE);
+        if(ret) {
+          std::cout << "allocate_remote_page_batch fail." << std::endl;
+          return 0;
+        }
+      } while (ret != 0);
+      
+      res = remote_addrs[0];
+      idx = 1;
+    }
+    return res;
+  }
+
+  local_pool(kv::LocalEngine *kv) : conn(kv), idx(0) {
+    int ret;
+    remote_addrs = new uint64_t[MAX_BATCH_SIZE];
+    assert(conn != nullptr);
+    conn->allocate_remote_page_batch(remote_addrs, MAX_BATCH_SIZE);
+    if(ret) {
+      std::cout << "allocate_remote_page_batch fail." << std::endl;
+    }
+  }
+};
+
 int fill_allocate_page_queue(kv::LocalEngine *kv_imp, const uint32_t begin, const uint32_t end) {
   uint64_t* remote_addrs = new uint64_t[MAX_BATCH_SIZE];
   uint64_t count = 0;
@@ -289,9 +327,6 @@ void deallocation_thread(kv::LocalEngine *kv_imp, const uint64_t interval) {
 
 void allocation_thread(kv::LocalEngine *kv_imp, 
                     const uint64_t interval, const uint32_t begin, const uint32_t end) {
-  //kv::LocalEngine *kv_imp = new kv::LocalEngine();
-  //assert(kv_imp);
-  //kv_imp->start(ip, port);
   uint64_t addr;
   uint64_t count = 0;
   double max_duratuon = 0.0;
@@ -300,6 +335,7 @@ void allocation_thread(kv::LocalEngine *kv_imp,
   uint64_t* remote_addrs = new uint64_t[MAX_BATCH_SIZE];
   uint64_t remote_addr;
   int ret;
+  local_pool* pool = new local_pool(kv_imp);
 
   fill_allocate_page_queue(kv_imp, begin, end);
 
@@ -308,6 +344,7 @@ void allocation_thread(kv::LocalEngine *kv_imp,
     for(uint32_t id = begin;id <= end; ++id) {
       uint64_t cur_queue_allocator_len = get_length_allocator(id);
       if(cur_queue_allocator_len < ALLOCATE_BUFFER_SIZE - 1) {
+        /*
         uint64_t batch_size = std::min(uint64_t(MAX_BATCH_SIZE), ALLOCATE_BUFFER_SIZE - 1 - cur_queue_allocator_len);
         ret = kv_imp->allocate_remote_page_batch(remote_addrs, batch_size);
         if(ret) {
@@ -318,16 +355,20 @@ void allocation_thread(kv::LocalEngine *kv_imp,
           assert(remote_addrs[i] != 0);
           assert((remote_addrs[i] & ((1 << PAGE_SHIFT) - 1)) == 0);
           push_queue_allocator(remote_addrs[i], id);
-        }
+        }*/
+        push_queue_allocator(pool->allocate_one_page(), id);
       }
     }
     
     if(count % 500000000 == 0 && begin == 0) {
-      auto queue_allocator = &queues_allocator->queues[0];
-      std::cout << "count: " << count << std::endl;
-      printf("allocator queue: len = %d, begin = %d, end = %d, first = %ld\n", (int)get_length_allocator(0), (int)queue_allocator->begin, (int)queue_allocator->end, (unsigned long)queue_allocator->begin);
-      //std::cout << "allocator queue: len = " << get_length_allocator() << ", begin = " << queue_allocator->begin << ""<< std::endl;
-      std::cout << "deallocator queue len:" << get_length_deallocator(0) << std::endl;
+      for(uint32_t id = begin;id <= end; ++id) {
+        auto queue_allocator = &queues_allocator->queues[id];
+        std::cout << "count: " << count << std::endl;
+        printf("allocator queue: len = %d, begin = %d, end = %d, first = %ld\n", (int)get_length_allocator(id), (int)queue_allocator->begin, (int)queue_allocator->end, (unsigned long)queue_allocator->begin);
+        //std::cout << "allocator queue: len = " << get_length_allocator() << ", begin = " << queue_allocator->begin << ""<< std::endl;
+        std::cout << "deallocator queue len:" << get_length_deallocator(id) << std::endl;
+      }
+      
     }
     
   }
@@ -352,7 +393,7 @@ int main(int argc, char *argv[]) {
 
   page_queue_shm_init();
   kv::LocalEngine *kv_imps[3];
-  for(int i = 0;i < 3; ++i) {
+  for(int i = 0;i < 4; ++i) {
     kv_imps[i] = new kv::LocalEngine();
     assert(kv_imps[i]);
     kv_imps[i]->start(rdma_addr, rdma_port);
@@ -362,10 +403,10 @@ int main(int argc, char *argv[]) {
   get_remote_global_rkey(kv_imps[0]);
 
 
-  auto t1  = new std::thread(&allocation_thread, kv_imps[0], interval, 0, 0);
-  auto t2  = new std::thread(&allocation_thread, kv_imps[1], interval, 1, 47);
+  auto t1  = new std::thread(&allocation_thread, kv_imps[0], interval, 24, 47);
+  auto t2  = new std::thread(&allocation_thread, kv_imps[1], interval, 0, 23);
   auto t3  = new std::thread(&reclaim_filler, kv_imps[2], interval);
-  auto t4  = new std::thread(&deallocation_thread, kv_imps[1], interval);
+  auto t4  = new std::thread(&deallocation_thread, kv_imps[3], interval);
   t1->join();
   t2->join();
 

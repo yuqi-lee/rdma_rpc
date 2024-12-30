@@ -32,6 +32,60 @@ static_assert(((SHARDING_NUM & (~SHARDING_NUM + 1)) == SHARDING_NUM),
 
 namespace kv {
 
+struct Block {
+  uint64_t addr;
+  uint32_t rkey;
+
+  Block(uint64_t a, uint32_t k) : addr(a), rkey(k) {
+
+  }
+
+  Block() : addr(0), rkey(0) {
+
+  }
+};
+
+struct BlockQueue {
+  uint64_t begin;
+  uint64_t end;
+  Block* blocks;
+  uint64_t block_num;
+  uint64_t capacity;
+  std::mutex mtx;
+
+  BlockQueue(uint64_t len) : begin(0), end(0), block_num(0), capacity(len) {
+    blocks = new Block[len];
+    assert(blocks != nullptr);
+  }
+
+  ~BlockQueue() {
+    delete[] blocks;
+  }
+
+  int allocate(uint64_t& addr, uint32_t& rkey) {
+    if(block_num == 0)
+      return -1;
+    addr = blocks[begin].addr;
+    rkey = blocks[begin].rkey;
+    begin = (begin + 1) % capacity;
+    block_num--;
+    return 0;
+  }
+
+  int free(uint64_t addr, uint32_t rkey) {
+    if(block_num == capacity)
+      return -1;
+    blocks[end].addr = addr;
+    blocks[end].rkey = rkey;
+    end = (end + 1) % capacity;
+    block_num++;
+    return 0;
+  }
+};
+
+
+
+
 struct PageQueue {
   uint64_t base_addr;
   uint64_t begin;
@@ -137,7 +191,11 @@ class LocalEngine : public Engine {
 
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
+  bool write_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey);
+  bool read_block(uint64_t& laddr, uint64_t& raddr, uint64_t& len, uint32_t& rkey);
+
   int allocate_remote_page(uint64_t& value);
+  int allocate_remote_block(uint64_t& value, uint32_t& rkey);
   int allocate_remote_page_batch(uint64_t* addr, int num);
   int free_remote_page(uint64_t value);
   int free_remote_page_batch(uint64_t* addr, int num);
@@ -188,6 +246,8 @@ class RemoteEngine : public Engine {
   int allocate_page(uint64_t &addr);
   int free_page(uint64_t addr);
 
+  int allocate_block(uint64_t& addr, uint32_t& rkey);
+
   int allocate_page_batch(uint64_t* addr, int num);
   int free_page_batch(uint64_t* addr, int num);
 
@@ -212,6 +272,7 @@ class RemoteEngine : public Engine {
   struct ibv_pd *m_pd_;
   struct ibv_context *m_context_;
   struct PageQueue* page_queue = nullptr;
+  struct BlockQueue* block_queue = nullptr;
   //boost::asio::io_context io_context_;
 
   void* base_addr = nullptr;

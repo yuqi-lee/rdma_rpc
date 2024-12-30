@@ -6,6 +6,8 @@
 #define CORE_ID 31
 
 const uint64_t TOTAL_PAGES =  (16 << 10 << 10);
+const uint64_t BLOCK_SIZE =  (2 << 10 << 10);
+const uint64_t REMOTE_MEM_SIZE =  (32 << 10 << 10 << 10);
 
 
 namespace kv {
@@ -112,17 +114,14 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   
   //main_worker_thread_->join();
 
+  /*
   base_addr = mmap((void*)0x1000000000, (TOTAL_PAGES << PAGE_SHIFT), PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
     perror("mmap failed.");
     return -1;
   }
-  /*
-  if (posix_memalign(&base_addr, (1 << SWAP_AREA_SHIFT), (TOTAL_PAGES << PAGE_SHIFT))) {
-    perror("posix_memalign failed");
-    return false;
-  } */
+
   std::cout << "successfully malloc " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes memory block at " << base_addr << std::endl;
   //base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
 
@@ -142,7 +141,27 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     return false;
   } else {
     std::cout << "page queue init success" << std::endl;
+  }*/
+
+  base_addr = mmap((void*)0x1000000000, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+  if(base_addr == MAP_FAILED) {
+    perror("mmap failed.");
+    return -1;
   }
+
+  block_queue = new BlockQueue(REMOTE_MEM_SIZE/BLOCK_SIZE);
+
+  for(auto p = base_addr;p < base_addr + REMOTE_MEM_SIZE; p += BLOCK_SIZE) {
+    memset(p, 777777, 4);
+    auto mr = ibv_reg_mr(m_pd_, p, BLOCK_SIZE,
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                     IBV_ACCESS_REMOTE_WRITE);
+    block_queue->free((uint64_t)p, mr->rkey);
+  }
+
+  std::cout << "successfully register " << REMOTE_MEM_SIZE << " bytes MR at " << base_addr << std::endl;
+  std::cout << "blocks queue length is " << block_queue->block_num << std::endl;
 
   return true;
 }
@@ -323,6 +342,12 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
   page_queue->mtx.lock();
   ret = this->page_queue->allocate(addr);
   page_queue->mtx.unlock();
+  return ret;
+}
+
+int RemoteEngine::allocate_block(uint64_t &addr, uint32_t &rkey) {
+  int ret;
+  ret = this->page_queue->allocate(addr);
   return ret;
 }
 
@@ -544,6 +569,29 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     std::chrono::duration<double, std::micro> duration = end - start;
     if (duration.count() > 0)
       std::cout << "allocate latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_ALLOCATEBLOCK: {
+    auto start = std::chrono::high_resolution_clock::now();
+    AllocateBlockRequest* alloc_page_req = (AllocateBlockRequest *)request;
+    AllocateBlockResponse* resp_msg = (AllocateBlockResponse *)cmd_resp;
+
+    if (allocate_block(resp_msg->addr, resp_msg->rkey)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
+                 alloc_page_req->resp_rkey);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if (duration.count() > 0)
+      std::cout << "allocate block latency is " << duration.count() << " us" << std::endl;
 
     break;
   }

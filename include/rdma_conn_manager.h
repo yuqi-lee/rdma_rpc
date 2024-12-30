@@ -48,6 +48,7 @@ class ConnectionManager {
            uint32_t one_sided_conn_num);
   int allocate_remote_page(uint64_t &addr);
   int allocate_remote_page_batch(uint64_t* addrs, int num);
+  int allocate_remote_block(uint64_t &addr, uint32_t &rkey);
   int free_remote_page(uint64_t value);
   int free_remote_page_batch(uint64_t* addrs, int num);
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
