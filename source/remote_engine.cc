@@ -6,8 +6,9 @@
 #define CORE_ID 31
 
 const uint64_t TOTAL_PAGES =  16ULL * 1024 * 1024;
-const uint64_t BLOCK_SIZE =  2ULL * 1024 * 1024;
+const uint64_t BLOCK_SIZE =  256ULL * 1024 * 1024;
 const uint64_t REMOTE_MEM_SIZE =  32ULL * 1024 * 1024 * 1024;
+const uint64_t NUM_BLOCKS = REMOTE_MEM_SIZE/BLOCK_SIZE;
 
 
 namespace kv {
@@ -141,23 +142,34 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     return false;
   } else {
     std::cout << "page queue init success" << std::endl;
-  }*/
+  }
 
-  base_addr = mmap((void*)0x1000000000, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
+  mmap(, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
     perror("mmap failed.");
     return -1;
-  }
+  }*/
 
-  block_queue = new BlockQueue(REMOTE_MEM_SIZE/BLOCK_SIZE);
+  base_addr = (void*)0x1000000000; 
 
-  for(auto p = base_addr;p < base_addr + REMOTE_MEM_SIZE; p += BLOCK_SIZE) {
-    memset(p, 777777, 4);
+  block_queue = new BlockQueue(NUM_BLOCKS);
+
+  for(uint32_t i = 0; i < NUM_BLOCKS; ++i) {
+    //auto begin_addr = base_addr + 3 * (BLOCK_SIZE/2) * i;
+    //void* p = mmap(begin_addr, BLOCK_SIZE, PROT_READ | PROT_WRITE, 
+            //MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+    void* p = malloc(BLOCK_SIZE);
+    assert(p);
+    //memset(p, 88888, 4);
     auto mr = ibv_reg_mr(m_pd_, p, BLOCK_SIZE,
-                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE);
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+    if(mr == nullptr) {
+      std::cout << "reg mr fail, with offset = " << i << std::endl;
+      continue;
+    }
     block_queue->free((uint64_t)p, mr->rkey);
+    //std::cout << "block address is " << p << std::endl;
   }
 
   std::cout << "successfully register " << REMOTE_MEM_SIZE << " bytes MR at " << base_addr << std::endl;
@@ -590,7 +602,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 0)
+    if (duration.count() > 2)
       std::cout << "allocate block latency is " << duration.count() << " us" << std::endl;
 
     break;
