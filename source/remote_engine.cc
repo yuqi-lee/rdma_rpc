@@ -114,7 +114,7 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   
   //main_worker_thread_->join();
 
-  /*
+
   base_addr = mmap((void*)0x1000000000, (TOTAL_PAGES << PAGE_SHIFT), PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
@@ -141,8 +141,8 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
     return false;
   } else {
     std::cout << "page queue init success" << std::endl;
-  }*/
-
+  }
+  /*
   base_addr = mmap((void*)0x1000000000, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
@@ -161,7 +161,7 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   }
 
   std::cout << "successfully register " << REMOTE_MEM_SIZE << " bytes MR at " << base_addr << std::endl;
-  std::cout << "blocks queue length is " << block_queue->block_num << std::endl;
+  std::cout << "blocks queue length is " << block_queue->block_num << std::endl;*/
 
   return true;
 }
@@ -339,9 +339,9 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
 
 int RemoteEngine::allocate_page(uint64_t &addr) {
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->allocate(addr);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -392,9 +392,9 @@ int RemoteEngine::free_page_malloc(uint64_t addr) {
 
 int RemoteEngine::free_page(uint64_t addr) {
   int ret;
-  page_queue->mtx.lock();
+  //page_queue->mtx.lock();
   ret = this->page_queue->free(addr);
-  page_queue->mtx.unlock();
+  //page_queue->mtx.unlock();
   return ret;
 }
 
@@ -551,7 +551,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     
   switch (request->type) {
   case MSG_ALLOCATEPAGE: {
-    auto start = std::chrono::high_resolution_clock::now();
+    //auto start = std::chrono::high_resolution_clock::now();
     AllocatePageRequest* alloc_page_req = (AllocatePageRequest *)request;
     AllocatePageResponse* resp_msg = (AllocatePageResponse *)cmd_resp;
 
@@ -566,9 +566,9 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                  alloc_page_req->resp_rkey);
 
     auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 0)
-      std::cout << "allocate latency is " << duration.count() << " us" << std::endl;
+    //std::chrono::duration<double, std::micro> duration = end - start;
+    //if (duration.count() > 2)
+      //std::cout << "allocate latency is " << duration.count() << " us" << std::endl;
 
     break;
   }
@@ -597,7 +597,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
   }
 
   case MSG_FREEPAGE: {
-    auto start = std::chrono::high_resolution_clock::now();
+    //auto start = std::chrono::high_resolution_clock::now();
     FreePageRequest* free_page_req = (FreePageRequest *)request;
     FreePageResponse* resp_msg = (FreePageResponse *)cmd_resp;
 
@@ -611,16 +611,16 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                  sizeof(CmdMsgRespBlock), free_page_req->resp_addr,
                  free_page_req->resp_rkey);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 0)
-      std::cout << "free latency is " << duration.count() << " us" << std::endl;
+    //auto end = std::chrono::high_resolution_clock::now();
+    //std::chrono::duration<double, std::micro> duration = end - start;
+    //if (duration.count() > 2)
+    //  std::cout << "free latency is " << duration.count() << " us" << std::endl;
 
     break;
   }
 
   case MSG_ALLOCATEPAGEBATCH: {
-    auto start = std::chrono::high_resolution_clock::now();
+    //auto start = std::chrono::high_resolution_clock::now();
     AllocatePageBatchRequest* allocate_page_batch_req = (AllocatePageBatchRequest *)request;
     AllocatePageBatchResponse* resp_msg = (AllocatePageBatchResponse *)cmd_resp;
 
@@ -634,16 +634,16 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                  sizeof(CmdMsgRespBlock), allocate_page_batch_req->resp_addr,
                  allocate_page_batch_req->resp_rkey);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 2)
-      std::cout << "batch allocate latency is " << duration.count() << " us" << std::endl;
+    //auto end = std::chrono::high_resolution_clock::now();
+    //std::chrono::duration<double, std::micro> duration = end - start;
+    //if (duration.count() > 5)
+    //  std::cout << "batch allocate latency is " << duration.count() << " us" << std::endl;
 
     break;
   }
 
   case MSG_FREEPAGEBATCH: {
-    auto start = std::chrono::high_resolution_clock::now();
+    //auto start = std::chrono::high_resolution_clock::now();
     FreePageBatchRequest* free_page_batch_req = (FreePageBatchRequest *)request;
     FreePageBatchResponse* resp_msg = (FreePageBatchResponse *)cmd_resp;
 
@@ -657,10 +657,10 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
                  sizeof(CmdMsgRespBlock), free_page_batch_req->resp_addr,
                  free_page_batch_req->resp_rkey);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> duration = end - start;
-    if (duration.count() > 2)
-      std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
+    //auto end = std::chrono::high_resolution_clock::now();
+    //std::chrono::duration<double, std::micro> duration = end - start;
+    //if (duration.count() > 5)
+    //  std::cout << "batch free latency is " << duration.count() << " us" << std::endl;
 
     break;
   }
