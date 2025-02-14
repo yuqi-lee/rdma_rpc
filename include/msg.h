@@ -99,6 +99,18 @@ class AllocateBlockResponse : public ResponseMsg {
 };
 CHECK_RDMA_MSG_SIZE(AllocatePageResponse);
 
+class FreeBlockRequest : public RequestsMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
+};
+CHECK_RDMA_MSG_SIZE(FreeBlockRequest);
+
+class FreeBlockResponse : public ResponseMsg {
+ public:
+};
+CHECK_RDMA_MSG_SIZE(FreeBlockResponse);
+
 class AllocatePageBatchRequest : public RequestsMsg {
  public:
   uint64_t num_to_allocate;

@@ -198,6 +198,7 @@ class LocalEngine : public Engine {
   int allocate_remote_block(uint64_t& value, uint32_t& rkey);
   int allocate_remote_page_batch(uint64_t* addr, int num);
   int free_remote_page(uint64_t value);
+  int free_remote_block(uint64_t value, uint32_t rkey);
   int free_remote_page_batch(uint64_t* addr, int num);
   int get_global_rkey(uint32_t& global_rkey);
 
@@ -247,6 +248,7 @@ class RemoteEngine : public Engine {
   int free_page(uint64_t addr);
 
   int allocate_block(uint64_t& addr, uint32_t& rkey);
+  int free_block(uint64_t addr, uint32_t rkey);
 
   int allocate_page_batch(uint64_t* addr, int num);
   int free_page_batch(uint64_t* addr, int num);
@@ -259,13 +261,12 @@ class RemoteEngine : public Engine {
 
   void worker(WorkerInfo *work_info, uint32_t num);
   void main_worker();
+  void recycler();
   void handle_cq_async(ibv_comp_channel *comp_channel, ibv_cq *cq);
 
   void worker_handel_cq(ibv_cq * cq);
 
   void startWorker(int num);
-  //boost::asio::awaitable<void> worker(WorkerInfo worker_info, int num);
-  //void run();
 
   struct rdma_event_channel *m_cm_channel_;
   struct rdma_cm_id *m_listen_id_;
@@ -273,7 +274,8 @@ class RemoteEngine : public Engine {
   struct ibv_context *m_context_;
   struct PageQueue* page_queue = nullptr;
   struct BlockQueue* block_queue = nullptr;
-  //boost::asio::io_context io_context_;
+  struct BlockQueue* recycle_block_queue = nullptr;
+  struct ibv_mr** online_mrs = nullptr;
 
   void* base_addr = nullptr;
   ibv_mr* global_mr = nullptr;
@@ -287,6 +289,7 @@ class RemoteEngine : public Engine {
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
   std::thread *main_worker_thread_;
+  std::thread *recycle_thread_;
   //std::thread *async_cq_thread;
   //std::condition_variable cv;
   std::mutex mtx;

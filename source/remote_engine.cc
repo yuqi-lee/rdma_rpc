@@ -6,7 +6,7 @@
 #define CORE_ID 31
 
 const uint64_t TOTAL_PAGES =  16ULL * 1024 * 1024;
-const uint64_t BLOCK_SIZE =  256ULL * 1024 * 1024;
+const uint64_t BLOCK_SIZE =  2ULL * 1024 * 1024;
 const uint64_t REMOTE_MEM_SIZE =  32ULL * 1024 * 1024 * 1024;
 const uint64_t NUM_BLOCKS = REMOTE_MEM_SIZE/BLOCK_SIZE;
 
@@ -14,15 +14,12 @@ const uint64_t NUM_BLOCKS = REMOTE_MEM_SIZE/BLOCK_SIZE;
 namespace kv {
 
 void set_thread_affinity(std::thread* t, int core_id) {
-    // 获取线程的原始句柄
     pthread_t native_handle = t->native_handle();
 
-    // 定义CPU亲和性集
     cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);           // 清空亲和性集
-    CPU_SET(core_id, &cpuset);   // 将指定核心添加到亲和性集
+    CPU_ZERO(&cpuset);           
+    CPU_SET(core_id, &cpuset);   
 
-    // 设置线程的亲和性
     int result = pthread_setaffinity_np(native_handle, sizeof(cpu_set_t), &cpuset);
     if (result != 0) {
         std::cerr << "Error setting thread affinity: " << result << std::endl;
@@ -102,74 +99,34 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   main_worker_thread_ = new std::thread(&RemoteEngine::main_worker, this);
   set_thread_affinity(main_worker_thread_, CORE_ID);
 
+  recycle_thread_ = new std::thread(&RemoteEngine::recycler, this);
+  set_thread_affinity(recycle_thread_, CORE_ID - 1);
+
   m_conn_handler_ = new std::thread(&RemoteEngine::handle_connection, this);
-  
+  set_thread_affinity(m_conn_handler_, CORE_ID - 2);
 
-  //m_conn_handler_->join();
-  /*
-  for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
-    if (m_worker_threads_[i] != nullptr) {
-      m_worker_threads_[i]->join();
-    }
-  }*/
-  
-  //main_worker_thread_->join();
-
-  /*
-  base_addr = mmap((void*)0x1000000000, (TOTAL_PAGES << PAGE_SHIFT), PROT_READ | PROT_WRITE, 
+  base_addr = mmap((void*)0x1000000000, (REMOTE_MEM_SIZE), PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
     perror("mmap failed.");
     return -1;
-  }
-
-  std::cout << "successfully malloc " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes memory block at " << base_addr << std::endl;
-  //base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
-
-  global_mr = ibv_reg_mr(m_pd_, base_addr, (TOTAL_PAGES << PAGE_SHIFT),
-                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE);
-  if(!global_mr) {
-    perror("global memory region register fail.");
-    return false;
-  }
-
-  std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
-
-  this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
-  if(this->page_queue == nullptr) {
-    perror("page queue init fail.");
-    return false;
-  } else {
-    std::cout << "page queue init success" << std::endl;
-  }
-
-  mmap(, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
-            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-  if(base_addr == MAP_FAILED) {
-    perror("mmap failed.");
-    return -1;
-  }*/
-
-  base_addr = (void*)0x1000000000; 
+  } 
 
   block_queue = new BlockQueue(NUM_BLOCKS);
+  recycle_block_queue = new BlockQueue(NUM_BLOCKS);
+  online_mrs = new ibv_mr*[NUM_BLOCKS];
 
   for(uint32_t i = 0; i < NUM_BLOCKS; ++i) {
-    //auto begin_addr = base_addr + 3 * (BLOCK_SIZE/2) * i;
-    //void* p = mmap(begin_addr, BLOCK_SIZE, PROT_READ | PROT_WRITE, 
-            //MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-    void* p = malloc(BLOCK_SIZE);
+    void* p = base_addr + (i * BLOCK_SIZE);
     assert(p);
-    //memset(p, 88888, 4);
     auto mr = ibv_reg_mr(m_pd_, p, BLOCK_SIZE,
                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
     if(mr == nullptr) {
       std::cout << "reg mr fail, with offset = " << i << std::endl;
       continue;
     }
+    online_mrs[i] = mr;
     block_queue->free((uint64_t)p, mr->rkey);
-    //std::cout << "block address is " << p << std::endl;
   }
 
   std::cout << "successfully register " << REMOTE_MEM_SIZE << " bytes MR at " << base_addr << std::endl;
@@ -359,7 +316,17 @@ int RemoteEngine::allocate_page(uint64_t &addr) {
 
 int RemoteEngine::allocate_block(uint64_t &addr, uint32_t &rkey) {
   int ret;
+  block_queue->mtx.lock();
   ret = this->block_queue->allocate(addr, rkey);
+  block_queue->mtx.unlock();
+  return ret;
+}
+
+int RemoteEngine::free_block(uint64_t addr, uint32_t rkey) {
+  int ret;
+  recycle_block_queue->mtx.lock();
+  ret = this->recycle_block_queue->free(addr, rkey);
+  recycle_block_queue->mtx.unlock();
   return ret;
 }
 
@@ -525,6 +492,36 @@ void RemoteEngine::main_worker() {
   }
 }
 
+void RemoteEngine::recycler() {
+  uint64_t addr;
+  uint32_t rkey;
+
+  while(true) {
+    recycle_block_queue->mtx.lock();
+    int ret = recycle_block_queue->allocate(addr, rkey);
+    recycle_block_queue->mtx.unlock();
+    while(ret != -1) {
+      uint64_t offset = (addr - (uint64_t)base_addr) / BLOCK_SIZE;
+      if(rkey == online_mrs[offset]->rkey) {
+        ibv_dereg_mr(online_mrs[offset]);
+        struct ibv_mr* new_mr = ibv_reg_mr(m_pd_, (void*)addr, BLOCK_SIZE,
+                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+        online_mrs[offset] = new_mr;
+        block_queue->mtx.lock();
+        block_queue->free(addr, new_mr->rkey);
+        block_queue->mtx.lock();
+      } else {
+        // just skip ...
+      }
+      recycle_block_queue->mtx.lock();
+      int ret = recycle_block_queue->allocate(addr, rkey);
+      recycle_block_queue->mtx.unlock();
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+}
+
+
 void RemoteEngine::worker_handel_cq(ibv_cq * cq) {
   struct ibv_wc wc;
   //work_info->cq_mutex.lock();
@@ -587,7 +584,7 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
 
   case MSG_ALLOCATEBLOCK: {
     auto start = std::chrono::high_resolution_clock::now();
-    AllocateBlockRequest* alloc_page_req = (AllocateBlockRequest *)request;
+    AllocateBlockRequest* alloc_block_req = (AllocateBlockRequest *)request;
     AllocateBlockResponse* resp_msg = (AllocateBlockResponse *)cmd_resp;
 
     if (allocate_block(resp_msg->addr, resp_msg->rkey)) {
@@ -597,8 +594,31 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
     }
 
     remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                 sizeof(CmdMsgRespBlock), alloc_page_req->resp_addr,
-                 alloc_page_req->resp_rkey);
+                 sizeof(CmdMsgRespBlock), alloc_block_req->resp_addr,
+                 alloc_block_req->resp_rkey);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = end - start;
+    if (duration.count() > 2)
+      std::cout << "allocate block latency is " << duration.count() << " us" << std::endl;
+
+    break;
+  }
+
+  case MSG_FREEBLOCK: {
+    auto start = std::chrono::high_resolution_clock::now();
+    FreeBlockRequest* free_block_req = (FreeBlockRequest *)request;
+    FreeBlockResponse* resp_msg = (FreeBlockResponse *)cmd_resp;
+
+    if (free_block(free_block_req->addr, free_block_req->rkey)) {
+      resp_msg->status = RES_FAIL;
+    } else {
+      resp_msg->status = RES_OK;
+    }
+
+    remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                 sizeof(CmdMsgRespBlock), free_block_req->resp_addr,
+                 free_block_req->resp_rkey);
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = end - start;
