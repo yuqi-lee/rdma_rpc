@@ -92,27 +92,34 @@ int main(int argc, char *argv[]) {
   const std::string rdma_port(argv[2]);
   const uint64_t interval = atoi(argv[3]);
 
-  std::vector<int> online_cpus;
-
-  for(int i = 0;i < 32; ++i) {
-    online_cpus.push_back(i);
-  }
-  for(int i = 64;i < 96; ++i) {
-    online_cpus.push_back(i);
-  }
-
   page_queue_shm_init();
-  kv::LocalEngine *kv_imp;
-  kv_imp = new kv::LocalEngine();
-  assert(kv_imp);
-  kv_imp->start(rdma_addr, rdma_port);
 
-  
-  get_remote_global_rkey(kv_imp);
+  std::vector<std::vector<int>> online_cpus;
+  int start = 0;  
+  while (start < NUM_ONLINE_CPUS) {
+      int end = std::min(start + NUM_CPUS_PER_THREAD, NUM_ONLINE_CPUS);
+      std::vector<int> currentVec;
+      for (int i = start; i < end; ++i) {
+          currentVec.push_back(i);
+      }
+      online_cpus.push_back(currentVec);
+      start = end;  
+  }
 
-  auto adaptive_scaler  = new std::thread(&allocation_thread, kv_imp, interval, online_cpus);
+  std::vector<std::thread *> adaptive_scaler;
+  for(auto v : online_cpus) {
+    kv::LocalEngine *kv_imp;
+    kv_imp = new kv::LocalEngine();
+    assert(kv_imp);
+    kv_imp->start(rdma_addr, rdma_port);
+    get_remote_global_rkey(kv_imp);
+    auto t = new std::thread(&allocation_thread, kv_imp, interval, v);
+    adaptive_scaler.push_back(t);
+  }
 
-  adaptive_scaler->join();
+  for(auto t : adaptive_scaler) {
+    t->join();
+  }
 
   return 0;
 }

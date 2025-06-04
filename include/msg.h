@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <chrono>
 
-#define MAX_BATCH_SIZE 128
+#define MAX_BATCH_SIZE 512
 
 namespace kv {
 
