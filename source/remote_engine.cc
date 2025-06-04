@@ -5,9 +5,8 @@
 #define MEM_ALIGN_SIZE 4096
 #define CORE_ID 31
 
-const uint64_t TOTAL_PAGES =  16ULL * 1024 * 1024;
-const uint64_t BLOCK_SIZE =  2ULL * 1024 * 1024;
-const uint64_t REMOTE_MEM_SIZE =  32ULL * 1024 * 1024 * 1024;
+const uint64_t TOTAL_PAGES =  8ULL * 1024 * 1024;
+const uint64_t REMOTE_MEM_SIZE =  TOTAL_PAGES << PAGE_SHIFT;
 
 
 namespace kv {
@@ -115,14 +114,14 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   //main_worker_thread_->join();
 
 
-  base_addr = mmap((void*)0x1000000000, (TOTAL_PAGES << PAGE_SHIFT), PROT_READ | PROT_WRITE, 
+  base_addr = mmap((void*)REMOTE_MEM_SIZE, REMOTE_MEM_SIZE, PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if(base_addr == MAP_FAILED) {
     perror("mmap failed.");
     return -1;
   }
 
-  std::cout << "successfully malloc " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes memory block at " << base_addr << std::endl;
+  std::cout << "successfully malloc " << REMOTE_MEM_SIZE << " bytes memory block at " << base_addr << std::endl;
   //base_addr = (void*)((((uint64_t)base_addr +(1 << PAGE_SHIFT))  >> PAGE_SHIFT) << PAGE_SHIFT);
 
   global_mr = ibv_reg_mr(m_pd_, base_addr, (TOTAL_PAGES << PAGE_SHIFT),
@@ -136,6 +135,10 @@ bool RemoteEngine::start( const std::string addr, const std::string port) {
   std::cout << "successfully register " << (TOTAL_PAGES << PAGE_SHIFT) << " bytes MR at " << base_addr << std::endl;
 
   this->page_queue = new PageQueue(TOTAL_PAGES, (uint64_t)base_addr);
+  uint64_t addr_tmp;
+  for(int i = 0;i < 10; ++i) {
+    this->page_queue->allocate(addr_tmp);
+  }
   if(this->page_queue == nullptr) {
     perror("page queue init fail.");
     return false;
