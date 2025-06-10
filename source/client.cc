@@ -48,8 +48,7 @@ int fill_allocate_page_queue(local_pool* pool, const std::vector<int>& online_cp
 
 
 
-void allocation_thread(kv::LocalEngine *kv_imp, 
-                    const uint64_t interval, const std::vector<int>& online_cpus) {
+void allocation_thread(kv::LocalEngine *kv_imp,  const std::vector<int>& online_cpus) {
   uint64_t count = 0;
   std::vector<double> res;
   int ret;
@@ -72,6 +71,7 @@ void allocation_thread(kv::LocalEngine *kv_imp,
       }
     }
     
+    /*
     if(count % 500000000 == 0) {
       for(auto id : online_cpus) {
         auto queue_allocator = &queues_allocator->queues[id];
@@ -80,7 +80,7 @@ void allocation_thread(kv::LocalEngine *kv_imp,
         //std::cout << "allocator queue: len = " << get_length_allocator() << ", begin = " << queue_allocator->begin << ""<< std::endl;
         //std::cout << "deallocator queue len:" << get_length_deallocator(id) << std::endl;
       }
-    }
+    }*/
   }
   
   kv_imp->stop();
@@ -90,7 +90,7 @@ void allocation_thread(kv::LocalEngine *kv_imp,
 int main(int argc, char *argv[]) {
   const std::string rdma_addr(argv[1]);
   const std::string rdma_port(argv[2]);
-  const uint64_t interval = atoi(argv[3]);
+  //const uint64_t interval = atoi(argv[3]);
 
   page_queue_shm_init();
 
@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
     assert(kv_imp);
     kv_imp->start(rdma_addr, rdma_port);
     get_remote_global_rkey(kv_imp);
-    auto t = new std::thread(&allocation_thread, kv_imp, interval, v);
+    auto t = new std::thread(&allocation_thread, kv_imp, v);
     adaptive_scaler.push_back(t);
   }
 
